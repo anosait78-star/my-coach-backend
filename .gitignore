@@ -1,0 +1,19 @@
+# أسرار البيئة — لا تُرفع أبداً. استخدم .env.example كقالب.
+.env
+.env.*
+!.env.example
+
+# التبعيات
+node_modules/
+
+# السجلات
+logs/
+*.log
+npm-debug.log*
+
+# ملفات مؤقتة/محلية
+.DS_Store
+Thumbs.db
+coverage/
+tmp/
+uploads/
