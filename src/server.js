@@ -44,7 +44,12 @@ const app = express();
 // أماناً لأنها تثق بوكيل واحد معروف فقط وتمنع تحذير ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
 app.set('trust proxy', 1);
 
-connectDB();
+// نتأكد أن اتصال MongoDB جاهز قبل تنفيذ أي مسار — ضروري في بيئة serverless
+// حيث لا يوجد ضمان إن استدعاء connectDB() عند إقلاع الوحدة قد اكتمل قبل
+// وصول أول طلب لحاوية باردة (cold start).
+app.use((req, res, next) => {
+  connectDB().then(() => next()).catch(next);
+});
 
 app.use(helmet());
 
