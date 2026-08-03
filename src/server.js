@@ -123,19 +123,23 @@ app.use('/api/v1/matches', matchRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  logger.info(`🚀 الخادم يعمل على المنفذ ${PORT} في بيئة ${process.env.NODE_ENV}`);
-});
-
-process.on('unhandledRejection', (err) => {
-  logger.error(`Unhandled Rejection: ${err.message}`);
-  server.close(() => process.exit(1));
-});
-
 process.on('uncaughtException', (err) => {
   logger.error(`Uncaught Exception: ${err.message}`);
   process.exit(1);
 });
 
-module.exports = server;
+// على Vercel يُستدعى الـ app مباشرة كدالة طلب لكل استدعاء serverless
+// (راجع api/index.js)، فلا داعي لـ app.listen() ولا مفيد أصلاً في تلك البيئة.
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  const server = app.listen(PORT, () => {
+    logger.info(`🚀 الخادم يعمل على المنفذ ${PORT} في بيئة ${process.env.NODE_ENV}`);
+  });
+
+  process.on('unhandledRejection', (err) => {
+    logger.error(`Unhandled Rejection: ${err.message}`);
+    server.close(() => process.exit(1));
+  });
+}
+
+module.exports = app;
