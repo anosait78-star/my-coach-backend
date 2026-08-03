@@ -19,6 +19,11 @@ const connectDB = () => {
         // يسمح بقاعدة بيانات معزولة للاختبار عبر MONGO_DB_NAME دون المساس
         // بقاعدة الإنتاج 'basketball_academy'. الإنتاج يبقى على القيمة الافتراضية.
         dbName: process.env.MONGO_DB_NAME || 'basketball_academy',
+        // نفشل بسرعة بدل الانتظار للحد الافتراضي (30 ثانية) الذي يتجاوز مهلة
+        // تنفيذ الفانكشن على Vercel ويؤدي لتعطّل الاستدعاء بالكامل بدل رسالة
+        // خطأ واضحة. سبب شائع للتعليق: قائمة IP المسموح بها في MongoDB Atlas
+        // Network Access لا تشمل 0.0.0.0/0 فتُسقِط اتصالات Vercel بصمت.
+        serverSelectionTimeoutMS: 8000,
       })
       .then((conn) => {
         logger.info(`✅ MongoDB متصل: ${conn.connection.host}`);
