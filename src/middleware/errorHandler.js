@@ -37,7 +37,15 @@ const errorHandler = (err, req, res, next) => {
   }
 
   if (statusCode >= 500) {
-    logger.error(`${statusCode} - ${message} - ${req.originalUrl}`, { stack: err.stack });
+    // تسجيل مؤقت مفصّل لتشخيص خطأ رفع الصور (Cloudinary) — نلتقط كل خصائص
+    // الخطأ (JSON.stringify العادي يتجاهل message/stack لأنها غير قابلة للعدّ).
+    let detail = '';
+    try {
+      detail = ' | full: ' + JSON.stringify(err, Object.getOwnPropertyNames(err));
+    } catch (_) {
+      detail = '';
+    }
+    logger.error(`${statusCode} - ${message}${detail} - ${req.originalUrl}`);
     // لا نُسرّب تفاصيل الأخطاء الداخلية للعميل — رسالة عامة فقط.
     message = 'حدث خطأ غير متوقع في الخادم';
   }
