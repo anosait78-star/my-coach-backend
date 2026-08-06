@@ -8,11 +8,7 @@ const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { generateStrongPassword } = require('../utils/generatePassword');
-const AcademySubscription = require('../models/academySubscription.model');
 const escapeRegex = require('../utils/escapeRegex');
-
-// إشارة داخلية: تخطّي إنشاء حساب اللاعب لأن بوابة اللاعب غير مفعّلة.
-class PortalDisabledSkip extends Error {}
 
 // Normalize an array field coming from multipart/form-data.
 // Accepts: a real array, a JSON-encoded array string, or a comma-separated string.
@@ -259,15 +255,10 @@ const createPlayer = async (req, res, next) => {
 
   const player = await Player.create(playerData);
 
-  // إنشاء حساب دخول للاعب تلقائياً (اسم مستخدم عالمي nosait00001 + كلمة مرور قوية)
-  // فقط إذا كانت ميزة بوابة اللاعب مفعّلة لهذه الأكاديمية (playerPortalEnabled).
+  // إنشاء حساب دخول للاعب تلقائياً (اسم مستخدم عالمي nosait00001 + كلمة مرور قوية).
   // best-effort: إن فشل لا نُفشل إنشاء اللاعب، لكن نُبلّغ الواجهة بغياب الحساب.
   let account = null;
   try {
-    const platformSub = await AcademySubscription.findOne({ academyId: player.academyId });
-    if (!platformSub || platformSub.playerPortalEnabled !== true) {
-      throw new PortalDisabledSkip();
-    }
     const username = await PlayerAccount.generateUsername();
     const plainPassword = generateStrongPassword(10);
     const created = await PlayerAccount.create({
@@ -279,11 +270,7 @@ const createPlayer = async (req, res, next) => {
     // نُرجع كلمة المرور النصية مرة واحدة فقط لعرضها في نافذة البيانات.
     account = { _id: created._id.toString(), username, password: plainPassword };
   } catch (accErr) {
-    if (accErr instanceof PortalDisabledSkip) {
-      logger.info(`[PLAYER-ACCOUNT] portal disabled for academy ${player.academyId} — skipping auto account for ${player.playerCode}`);
-    } else {
-      logger.warn(`[PLAYER-ACCOUNT] failed to create account for ${player.playerCode}: ${accErr.message}`);
-    }
+    logger.warn(`[PLAYER-ACCOUNT] failed to create account for ${player.playerCode}: ${accErr.message}`);
   }
 
   logger.info(`Player created: ${player.playerCode} - ${player.fullName}`);

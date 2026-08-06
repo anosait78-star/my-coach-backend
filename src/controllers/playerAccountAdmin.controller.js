@@ -1,6 +1,5 @@
 const Player = require('../models/player.model');
 const PlayerAccount = require('../models/playerAccount.model');
-const AcademySubscription = require('../models/academySubscription.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { generateStrongPassword } = require('../utils/generatePassword');
@@ -25,11 +24,8 @@ const loadAuthorizedPlayer = async (req) => {
   return { player };
 };
 
-// هل ميزة بوابة اللاعب مفعّلة لأكاديمية هذا اللاعب؟
-const isPortalEnabled = async (academyId) => {
-  const sub = await AcademySubscription.findOne({ academyId });
-  return !!(sub && sub.playerPortalEnabled === true);
-};
+// بوابة اللاعب مفعّلة دائماً لكل الأكاديميات.
+const isPortalEnabled = async () => true;
 
 // ─── GET /players/:id/account ────────────────────────────────────────────────
 // حالة حساب اللاعب (بدون أي كلمة مرور) + حالة تفعيل الميزة للأكاديمية.

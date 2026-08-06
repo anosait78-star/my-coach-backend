@@ -26,14 +26,13 @@ const staffRoutes = require('./routes/staff.routes');
 const staffAttendanceRoutes = require('./routes/staffAttendance.routes');
 const payrollRoutes = require('./routes/payroll.routes');
 const expenseRoutes = require('./routes/expense.routes');
-// منصة Nosait SaaS
-const platformSubscriptionRoutes = require('./routes/platformSubscription.routes');
 const playerAuthRoutes = require('./routes/playerAuth.routes');
 const playerPortalRoutes = require('./routes/playerPortal.routes');
 const chatRoutes = require('./routes/chat.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const academyAlbumRoutes = require('./routes/academyAlbum.routes');
 const storeRoutes = require('./routes/store.routes');
+const teamKitRoutes = require('./routes/teamKit.routes');
 const matchRoutes = require('./routes/match.routes');
 
 const app = express();
@@ -116,13 +115,13 @@ app.use('/api/v1/staff', staffRoutes);
 app.use('/api/v1/staff-attendance', staffAttendanceRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
-app.use('/api/v1/platform/subscriptions', platformSubscriptionRoutes);
 app.use('/api/v1/auth/player', playerAuthRoutes);
 app.use('/api/v1/player', playerPortalRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/academy-album', academyAlbumRoutes);
 app.use('/api/v1/store', storeRoutes);
+app.use('/api/v1/team-kit', teamKitRoutes);
 app.use('/api/v1/matches', matchRoutes);
 
 app.use(notFound);

@@ -60,6 +60,19 @@ const storeProductStorage = new CloudinaryStorage({
   },
 });
 
+// صورة طقم الفريق — نفس خدمة Cloudinary، مجلد مستقل. لا خدمة رفع جديدة.
+const teamKitStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'basketball_academy/team_kits',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 1200, height: 1200, crop: 'limit' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  },
+});
+
 const staffPhotoStorage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -118,6 +131,12 @@ const uploadStoreImage = multer({
   fileFilter,
 });
 
+const uploadKitImage = multer({
+  storage: teamKitStorage,
+  limits: { fileSize: MAX_IMAGE_BYTES },
+  fileFilter,
+});
+
 const deleteImage = async (publicId) => {
   return cloudinary.uploader.destroy(publicId);
 };
@@ -129,6 +148,7 @@ module.exports = {
   uploadStaffPhoto,
   uploadAlbumImage,
   uploadStoreImage,
+  uploadKitImage,
   deleteImage,
   MAX_IMAGE_BYTES,
 };

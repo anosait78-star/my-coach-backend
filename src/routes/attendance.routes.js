@@ -6,7 +6,6 @@ const {
   getAttendanceReport,
 } = require('../controllers/attendance.controller');
 const { protect } = require('../middleware/auth.middleware');
-const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
@@ -14,7 +13,6 @@ const router = express.Router();
 // All routes require authentication
 router.use(protect);
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
-router.use(blockIfNotWritable);
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 

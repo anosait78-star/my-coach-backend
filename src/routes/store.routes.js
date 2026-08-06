@@ -12,15 +12,12 @@ const {
   updateOrderStatus,
 } = require('../controllers/store.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
-const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const { uploadStoreImage } = require('../config/cloudinary');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
 
 router.use(protect);
-// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
-router.use(blockIfNotWritable);
 
 const manage = restrictTo('super_admin', 'academy_admin', 'admin');
 

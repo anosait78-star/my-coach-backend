@@ -11,13 +11,11 @@ const {
   logReminder,
 } = require('../controllers/match.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
-const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
 
 router.use(protect);
-router.use(blockIfNotWritable);
 
 const manage = restrictTo('super_admin', 'academy_admin', 'admin');
 

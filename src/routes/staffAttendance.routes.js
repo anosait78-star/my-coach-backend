@@ -6,7 +6,6 @@ const {
   getAttendanceReport,
 } = require('../controllers/staffAttendance.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
-const { blockIfNotWritable } = require('../middleware/subscriptionGuard');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
@@ -14,7 +13,6 @@ const router = express.Router();
 router.use(protect);
 router.use(restrictTo('academy_admin'));
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
-router.use(blockIfNotWritable);
 
 const markValidators = [
   body('staffId').notEmpty().withMessage('معرّف الموظف مطلوب').isMongoId().withMessage('معرّف الموظف غير صحيح'),
