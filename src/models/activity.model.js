@@ -46,6 +46,8 @@ const activitySchema = new mongoose.Schema(
         'CREATE_STORE_ORDER', 'UPDATE_STORE_ORDER',
         // المباريات (Matches)
         'CREATE_MATCH', 'UPDATE_MATCH', 'DELETE_MATCH',
+        // طلبات الانضمام الذاتي (Join Requests)
+        'APPROVE_JOIN_REQUEST', 'REJECT_JOIN_REQUEST',
       ],
     },
     entityType: {

@@ -85,6 +85,34 @@ const staffPhotoStorage = new CloudinaryStorage({
   },
 });
 
+// تخزين ملفات طلب الانضمام (تسجيل ذاتي للاعب) — حقلان مختلفان بنفس الـ multer
+// instance: 'image' (صورة اللاعب، اختيارية) و'receipt' (صورة إيصال الدفع،
+// مطلوبة). الـ params دالة تختار المجلد/التحويل حسب اسم الحقل.
+const joinRequestStorage = new CloudinaryStorage({
+  cloudinary,
+  params: (req, file) => {
+    if (file.fieldname === 'receipt') {
+      return {
+        folder: 'basketball_academy/receipts',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+        transformation: [
+          { width: 1600, height: 1600, crop: 'limit' },
+          { quality: 'auto', fetch_format: 'auto' },
+        ],
+      };
+    }
+    // fieldname === 'image' — نفس إعدادات صورة اللاعب العادية.
+    return {
+      folder: 'basketball_academy/players',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [
+        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+        { quality: 'auto', fetch_format: 'auto' },
+      ],
+    };
+  },
+});
+
 // قائمة بيضاء صارمة لأنواع الصور النقطية المسموح بها. نرفض صراحةً
 // image/svg+xml و text/html والملفات التنفيذية حتى لو زُوِّر امتداد الملف —
 // وCloudinary يعيد ترميز الصورة بعد الرفع كطبقة دفاع ثانية.
@@ -137,6 +165,15 @@ const uploadKitImage = multer({
   fileFilter,
 });
 
+const uploadJoinRequestFiles = multer({
+  storage: joinRequestStorage,
+  limits: { fileSize: MAX_IMAGE_BYTES },
+  fileFilter,
+}).fields([
+  { name: 'receipt', maxCount: 1 },
+  { name: 'image', maxCount: 1 },
+]);
+
 const deleteImage = async (publicId) => {
   return cloudinary.uploader.destroy(publicId);
 };
@@ -149,6 +186,7 @@ module.exports = {
   uploadAlbumImage,
   uploadStoreImage,
   uploadKitImage,
+  uploadJoinRequestFiles,
   deleteImage,
   MAX_IMAGE_BYTES,
 };

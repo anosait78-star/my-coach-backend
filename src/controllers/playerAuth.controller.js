@@ -18,6 +18,8 @@ const buildPlayerPayload = (account, academyName) => {
     image_url: player?.image_url || null,
     academy_id: account.academyId?.toString() || null,
     academy_name: academyName || '',
+    registrationStatus: player?.registrationStatus || 'approved',
+    rejectionReason: player?.registrationStatus === 'rejected' ? (player?.rejectionReason || null) : null,
   };
 };
 

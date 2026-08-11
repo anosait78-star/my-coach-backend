@@ -9,6 +9,9 @@ const {
   deletePlayer,
   deletePlayerImage,
   changeGroup,
+  listJoinRequests,
+  approveJoinRequest,
+  rejectJoinRequest,
 } = require('../controllers/player.controller');
 const {
   getPlayerAccount,
@@ -95,6 +98,25 @@ const changeGroupValidators = [
     .isMongoId().withMessage('معرّف المجموعة غير صحيح'),
 ];
 
+const approveJoinRequestValidators = [
+  body('amount')
+    .notEmpty().withMessage('مبلغ الاشتراك مطلوب')
+    .isFloat({ min: 0 }).withMessage('مبلغ الاشتراك غير صحيح'),
+  body('startDate')
+    .notEmpty().withMessage('تاريخ بداية الاشتراك مطلوب')
+    .isDate().withMessage('تاريخ البداية غير صحيح'),
+  body('endDate')
+    .notEmpty().withMessage('تاريخ نهاية الاشتراك مطلوب')
+    .isDate().withMessage('تاريخ النهاية غير صحيح')
+    .custom((value, { req }) => new Date(value) > new Date(req.body.startDate))
+    .withMessage('تاريخ النهاية يجب أن يكون بعد تاريخ البداية'),
+  body('notes').optional({ checkFalsy: true }).isLength({ max: 500 }),
+];
+
+const rejectJoinRequestValidators = [
+  body('reason').optional({ checkFalsy: true }).isLength({ max: 500 }).withMessage('سبب الرفض طويل جداً'),
+];
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 // GET  /players
@@ -105,6 +127,9 @@ router.get('/search', searchPlayers);
 
 // GET  /players/account-stats   ← MUST be before /:id to avoid conflict
 router.get('/account-stats', getAccountStats);
+
+// GET  /players/join-requests   ← MUST be before /:id to avoid conflict
+router.get('/join-requests', listJoinRequests);
 
 // GET  /players/:id
 router.get('/:id', getPlayerById);
@@ -169,5 +194,21 @@ router.delete('/:id/image', deletePlayerImage);
 
 // PATCH /players/:id/change-group
 router.patch('/:id/change-group', changeGroupValidators, validate, changeGroup);
+
+// PATCH /players/:id/approve-join-request
+router.patch(
+  '/:id/approve-join-request',
+  approveJoinRequestValidators,
+  validate,
+  approveJoinRequest
+);
+
+// PATCH /players/:id/reject-join-request
+router.patch(
+  '/:id/reject-join-request',
+  rejectJoinRequestValidators,
+  validate,
+  rejectJoinRequest
+);
 
 module.exports = router;

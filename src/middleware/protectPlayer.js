@@ -34,6 +34,21 @@ const protectPlayer = async (req, res, next) => {
     }
     if (!account.playerId) return next(new AppError('اللاعب غير موجود', 401));
 
+    // طلبات الانضمام الذاتية (registrationStatus != 'approved'): الحساب يقدر
+    // يسجّل دخول، لكن كل محتوى البوابة يُحجب عدا GET /auth/player/me (اللي
+    // الفرونت محتاجه يعرف الحالة ويوجّه لشاشة "قيد المراجعة"). طبقة حماية
+    // إضافية بجانب التوجيه على مستوى الراوتر بالفرونت.
+    const status = account.playerId.registrationStatus || 'approved';
+    if (status !== 'approved' && req.path !== '/me') {
+      return res.status(403).json({
+        success: false,
+        code: status === 'rejected' ? 'REJECTED' : 'PENDING_APPROVAL',
+        message: status === 'rejected'
+          ? 'تم رفض طلب انضمامك. يرجى التواصل مع أكاديميتك.'
+          : 'طلبك قيد المراجعة من الأكاديمية.',
+      });
+    }
+
     // إيقاف البوابة يسري أيضاً على الجلسات القائمة (توكنات صادرة سابقاً).
     const portal = await checkPlayerPortal(account.academyId);
     if (!portal.active) {

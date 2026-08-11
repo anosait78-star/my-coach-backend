@@ -2,12 +2,15 @@ const Player = require('../models/player.model');
 const Academy = require('../models/academy.model');
 const Group = require('../models/group.model');
 const PlayerAccount = require('../models/playerAccount.model');
+const Subscription = require('../models/subscription.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { generateStrongPassword } = require('../utils/generatePassword');
+const { generatePlayerToken } = require('../utils/jwt');
+const { notify } = require('../utils/notificationService');
 const escapeRegex = require('../utils/escapeRegex');
 
 // Normalize an array field coming from multipart/form-data.
@@ -420,6 +423,234 @@ const changeGroup = async (req, res, next) => {
   return sendSuccess(res, { data: player, message: 'تم نقل اللاعب إلى المجموعة الجديدة بنجاح' });
 };
 
+// ─── طلبات الانضمام (تسجيل ذاتي للاعبين) ─────────────────────────────────────
+
+// يطبّع رقم الهاتف المُستخدَم كاسم مستخدم دخول: يحذف المسافات/الشرطات/الأقواس
+// ليتطابق بشكل ثابت بغض النظر عن صيغة الإدخال (مثل حقل username في PlayerAccount
+// الذي يُحفَظ lowercase أصلاً).
+const normalizeLoginPhone = (raw) => String(raw).replace(/[\s\-()]/g, '');
+
+// ─── POST /players/join-request ──────────────────────────────────────────────
+// عام (بلا تسجيل دخول). نفس بيانات createPlayer + فرع + إيصال دفع + بيانات
+// دخول يختارها اللاعب بنفسه. يُنشئ Player بحالة 'pending' + PlayerAccount
+// فعّال (يقدر يسجّل دخول فوراً لكن يشوف شاشة "قيد المراجعة" فقط — protectPlayer
+// هو من يفرض هذا الحجب).
+const createJoinRequest = async (req, res, next) => {
+  const {
+    academyId,
+    fullName,
+    birthDate,
+    parentName,
+    parentRelationship,
+    parentJob,
+    parentPhone,
+    playerPhone,
+    notes,
+    branch,
+    loginPhone,
+    password,
+  } = req.body;
+
+  const receiptFile = req.files?.receipt?.[0];
+  const imageFile = req.files?.image?.[0];
+  const uploadedPublicIds = [receiptFile?.filename, imageFile?.filename].filter(Boolean);
+
+  const cleanupUploads = async () => {
+    for (const publicId of uploadedPublicIds) {
+      await deleteImage(publicId).catch(() => {});
+    }
+  };
+
+  if (!receiptFile) {
+    await cleanupUploads();
+    return next(new AppError('صورة إيصال الدفع مطلوبة', 422));
+  }
+
+  const academy = await Academy.findById(academyId).select('sports');
+  if (!academy) {
+    await cleanupUploads();
+    return next(new AppError('الفرع المختار غير موجود', 404));
+  }
+
+  const username = normalizeLoginPhone(loginPhone);
+  const existingAccount = await PlayerAccount.findOne({ username: username.toLowerCase() });
+  if (existingAccount) {
+    await cleanupUploads();
+    return next(new AppError('رقم الهاتف هذا مُستخدَم بالفعل لحساب دخول آخر', 409));
+  }
+
+  const academySports = Array.isArray(academy.sports) && academy.sports.length > 0
+    ? academy.sports
+    : ['كرة قدم'];
+
+  const attendanceDays = parseArrayField(req.body.attendanceDays) || [];
+
+  let player = null;
+  let account = null;
+  try {
+    player = await Player.create({
+      academyId,
+      fullName,
+      birthDate,
+      parentName,
+      parentRelationship,
+      parentJob: parentJob || undefined,
+      parentPhone,
+      playerPhone: playerPhone || undefined,
+      notes: notes || undefined,
+      sport: academySports[0],
+      attendanceDays,
+      image_url: imageFile ? imageFile.path : null,
+      image_public_id: imageFile ? imageFile.filename : null,
+      registrationStatus: 'pending',
+      registrationSource: 'self',
+      branch,
+      receipt_url: receiptFile.path,
+      receipt_public_id: receiptFile.filename,
+    });
+
+    account = await PlayerAccount.create({
+      playerId: player._id,
+      academyId,
+      username,
+      password,
+    });
+  } catch (err) {
+    if (account) await PlayerAccount.deleteOne({ _id: account._id }).catch(() => {});
+    if (player) await Player.deleteOne({ _id: player._id }).catch(() => {});
+    await cleanupUploads();
+    return next(err);
+  }
+
+  logger.info(`Join request created: ${player.playerCode} - ${player.fullName}`);
+
+  notify({
+    recipientType: 'academy',
+    recipientId: academyId,
+    academyId,
+    type: 'JOIN_REQUEST',
+    title: 'طلب انضمام لاعب جديد',
+    body: `${player.fullName} تقدّم بطلب انضمام (${branch})`,
+    meta: { playerId: player._id.toString() },
+  });
+
+  const token = generatePlayerToken(account._id);
+
+  return res.status(201).json({
+    success: true,
+    message: 'تم إرسال طلب الانضمام بنجاح، سيتم مراجعته من قِبل الأكاديمية',
+    token,
+    data: player,
+  });
+};
+
+// ─── GET /players/join-requests ──────────────────────────────────────────────
+const listJoinRequests = async (req, res, next) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const skip = (page - 1) * limit;
+
+  let academyId;
+  if (req.user.role === 'super_admin') {
+    if (!req.query.academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+    academyId = req.query.academyId;
+  } else {
+    academyId = req.user.academyId;
+  }
+
+  const filter = { academyId, registrationStatus: 'pending' };
+  const [requests, total] = await Promise.all([
+    Player.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
+    Player.countDocuments(filter),
+  ]);
+
+  return sendPaginated(res, {
+    data: requests,
+    total,
+    page,
+    limit,
+    message: 'تم جلب طلبات الانضمام بنجاح',
+  });
+};
+
+// ─── PATCH /players/:id/approve-join-request ─────────────────────────────────
+const approveJoinRequest = async (req, res, next) => {
+  const { amount, startDate, endDate, notes } = req.body;
+
+  const player = await Player.findById(req.params.id);
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  if (req.user.role !== 'super_admin' &&
+      player.academyId.toString() !== req.user.academyId?.toString()) {
+    return next(new AppError('ليس لديك صلاحية على هذا الطلب', 403));
+  }
+  if (player.registrationStatus !== 'pending') {
+    return next(new AppError('هذا الطلب تمت مراجعته بالفعل', 409));
+  }
+
+  const subscription = await Subscription.create({
+    academyId: player.academyId,
+    playerId: player._id,
+    type: 'NEW_SUBSCRIPTION',
+    amount,
+    startDate,
+    endDate,
+    notes,
+  });
+
+  player.registrationStatus = 'approved';
+  player.rejectionReason = null;
+  await player.save();
+
+  logger.info(`Join request approved: ${player.playerCode} - ${player.fullName}`);
+  logActivity(req, {
+    actionType: 'APPROVE_JOIN_REQUEST', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
+
+  notify({
+    recipientType: 'player', recipientId: player._id, academyId: player.academyId,
+    type: 'JOIN_REQUEST_APPROVED',
+    title: 'تمت الموافقة على طلب انضمامك',
+    body: `مرحباً بك في الأكاديمية! اشتراكك ساري حتى ${new Date(endDate).toLocaleDateString('ar-EG')}`,
+    meta: { subscriptionId: subscription._id.toString() },
+  });
+
+  return sendSuccess(res, { data: { player, subscription }, message: 'تمت الموافقة على طلب الانضمام بنجاح' });
+};
+
+// ─── PATCH /players/:id/reject-join-request ──────────────────────────────────
+const rejectJoinRequest = async (req, res, next) => {
+  const player = await Player.findById(req.params.id);
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  if (req.user.role !== 'super_admin' &&
+      player.academyId.toString() !== req.user.academyId?.toString()) {
+    return next(new AppError('ليس لديك صلاحية على هذا الطلب', 403));
+  }
+  if (player.registrationStatus !== 'pending') {
+    return next(new AppError('هذا الطلب تمت مراجعته بالفعل', 409));
+  }
+
+  player.registrationStatus = 'rejected';
+  player.rejectionReason = req.body.reason || null;
+  await player.save();
+
+  logger.info(`Join request rejected: ${player.playerCode} - ${player.fullName}`);
+  logActivity(req, {
+    actionType: 'REJECT_JOIN_REQUEST', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
+
+  notify({
+    recipientType: 'player', recipientId: player._id, academyId: player.academyId,
+    type: 'JOIN_REQUEST_REJECTED',
+    title: 'تم رفض طلب انضمامك',
+    body: player.rejectionReason || 'يرجى التواصل مع الأكاديمية لمزيد من التفاصيل',
+    meta: {},
+  });
+
+  return sendSuccess(res, { data: player, message: 'تم رفض طلب الانضمام' });
+};
+
 module.exports = {
   getPlayers,
   searchPlayers,
@@ -429,4 +660,8 @@ module.exports = {
   deletePlayer,
   deletePlayerImage,
   changeGroup,
+  createJoinRequest,
+  listJoinRequests,
+  approveJoinRequest,
+  rejectJoinRequest,
 };

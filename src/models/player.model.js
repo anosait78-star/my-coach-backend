@@ -103,6 +103,46 @@ const playerSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // ── تسجيل ذاتي للاعبين (طلبات الانضمام) ──
+    // registrationStatus: حالة مراجعة الطلب. اللاعبون الذين ينشئهم الأدمن مباشرة
+    // (registrationSource='admin') تكون حالتهم 'approved' افتراضياً بلا أي تأثير.
+    registrationStatus: {
+      type: String,
+      enum: {
+        values: ['approved', 'pending', 'rejected'],
+        message: 'حالة التسجيل غير صحيحة',
+      },
+      default: 'approved',
+    },
+    registrationSource: {
+      type: String,
+      enum: {
+        values: ['admin', 'self'],
+        message: 'مصدر التسجيل غير صحيح',
+      },
+      default: 'admin',
+    },
+    // الفرع الذي اختاره اللاعب عند التسجيل الذاتي (نصي، للعرض فقط).
+    branch: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    receipt_url: {
+      type: String,
+      default: null,
+    },
+    receipt_public_id: {
+      type: String,
+      default: null,
+      select: false,
+    },
+    rejectionReason: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'سبب الرفض لا يمكن أن يتجاوز 500 حرف'],
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
@@ -114,11 +154,15 @@ const playerSchema = new mongoose.Schema(
         if (ret.groupId) ret.groupId = ret.groupId.toString();
         delete ret.__v;
         delete ret.image_public_id;
+        delete ret.receipt_public_id;
         return ret;
       },
     },
   }
 );
+
+// طلبات الانضمام المعلّقة لكل أكاديمية — تُستعلم بكثرة من شاشة "طلبات الانضمام".
+playerSchema.index({ academyId: 1, registrationStatus: 1 });
 
 // Indexes
 playerSchema.index({ academyId: 1 });

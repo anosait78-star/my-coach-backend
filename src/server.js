@@ -17,6 +17,7 @@ const academyRegistrationRoutes = require('./routes/academyRegistration.routes')
 const academyRoutes = require('./routes/academy.routes');
 const userRoutes = require('./routes/user.routes');
 const playerRoutes = require('./routes/player.routes');
+const playerJoinRequestRoutes = require('./routes/playerJoinRequest.routes');
 const groupRoutes = require('./routes/group.routes');
 const subscriptionRoutes = require('./routes/subscription.routes');
 const evaluationRoutes = require('./routes/evaluation.routes');
@@ -105,6 +106,9 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/register-academy', academyRegistrationRoutes);
 app.use('/api/v1/academies', academyRoutes);
 app.use('/api/v1/users', userRoutes);
+// عام (بلا protect) — يجب أن يُركَّب قبل playerRoutes المحمي بالكامل حتى
+// يلتقط POST /players/join-request قبل أن يصل لحارس protect.
+app.use('/api/v1/players', playerJoinRequestRoutes);
 app.use('/api/v1/players', playerRoutes);
 app.use('/api/v1/groups', groupRoutes);
 app.use('/api/v1/subscriptions', subscriptionRoutes);
