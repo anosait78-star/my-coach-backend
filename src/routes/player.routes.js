@@ -2,6 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const {
   getPlayers,
+  getPlayersBirthdays,
   searchPlayers,
   getPlayerById,
   createPlayer,
@@ -124,6 +125,9 @@ router.get('/', getPlayers);
 
 // GET  /players/search?q=...   ← MUST be before /:id to avoid conflict
 router.get('/search', searchPlayers);
+
+// GET  /players/birthdays?month=8&academyId=...   ← MUST be before /:id to avoid conflict
+router.get('/birthdays', getPlayersBirthdays);
 
 // GET  /players/account-stats   ← MUST be before /:id to avoid conflict
 router.get('/account-stats', getAccountStats);

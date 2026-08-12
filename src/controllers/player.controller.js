@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Player = require('../models/player.model');
 const Academy = require('../models/academy.model');
 const Group = require('../models/group.model');
@@ -136,6 +137,44 @@ const getPlayers = async (req, res, next) => {
     limit,
     message: 'تم جلب اللاعبين بنجاح',
   });
+};
+
+// ─── GET /players/birthdays ──────────────────────────────────────────────────
+// يرجّع كل لاعبي الأكاديمية اللي شهر ميلادهم = الشهر المطلوب (1-12)، بغضّ النظر
+// عن السنة. تُستخدم في خانة "أعياد الميلاد" بالإجراءات السريعة بالداشبورد.
+// نفس نطاق الصلاحيات المُستخدم في getPlayers: super_admin يمرّر academyId
+// صراحةً، وأي دور آخر مُقيَّد حتمياً بأكاديميته.
+const getPlayersBirthdays = async (req, res, next) => {
+  const month = parseInt(req.query.month, 10) || new Date().getMonth() + 1;
+  if (month < 1 || month > 12) {
+    return next(new AppError('رقم الشهر غير صالح (1-12)', 400));
+  }
+
+  let academyId;
+  if (req.user.role === 'super_admin') {
+    if (!req.query.academyId) {
+      return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+    }
+    academyId = req.query.academyId;
+  } else {
+    academyId = req.user.academyId;
+  }
+
+  const players = await Player.aggregate([
+    {
+      $match: {
+        academyId: new mongoose.Types.ObjectId(academyId),
+        isActive: true,
+      },
+    },
+    { $addFields: { _birthMonth: { $month: '$birthDate' } } },
+    { $match: { _birthMonth: month } },
+    { $addFields: { _birthDay: { $dayOfMonth: '$birthDate' } } },
+    { $sort: { _birthDay: 1 } },
+    { $project: { _birthMonth: 0 } },
+  ]);
+
+  return sendSuccess(res, { data: players, message: 'تم جلب أعياد الميلاد بنجاح' });
 };
 
 // ─── GET /players/search ─────────────────────────────────────────────────────
@@ -653,6 +692,7 @@ const rejectJoinRequest = async (req, res, next) => {
 
 module.exports = {
   getPlayers,
+  getPlayersBirthdays,
   searchPlayers,
   getPlayerById,
   createPlayer,

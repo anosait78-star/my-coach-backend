@@ -60,7 +60,7 @@ const createPlayerAccount = async (req, res, next) => {
     return res.status(403).json({
       success: false,
       code: 'PLAYER_PORTAL_DISABLED',
-      message: 'بوابة اللاعب غير مفعّلة لهذه الأكاديمية. تواصل مع إدارة Nosait لتفعيلها.',
+      message: 'بوابة اللاعب غير مفعّلة لهذه الأكاديمية. تواصل مع إدارة My Coach لتفعيلها.',
     });
   }
 
