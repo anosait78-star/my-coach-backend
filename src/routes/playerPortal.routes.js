@@ -9,6 +9,14 @@ const {
 } = require('../controllers/notification.controller');
 const { updateMyPhoto, deleteMyPhoto } = require('../controllers/playerProfile.controller');
 const { getPlayerAlbum } = require('../controllers/academyAlbum.controller');
+const {
+  getMyVideos,
+  likeAsPlayer,
+  unlikeAsPlayer,
+  listCommentsAsPlayer,
+  addCommentAsPlayer,
+  removeCommentAsPlayer,
+} = require('../controllers/playerVideo.controller');
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { getPlayerKit, createPlayerBooking } = require('../controllers/teamKit.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
@@ -31,6 +39,34 @@ router.delete('/photo', deleteMyPhoto);
 
 // ── ألبوم الأكاديمية (قراءة فقط — أكاديمية اللاعب حصراً) ──
 router.get('/album', getPlayerAlbum);
+
+// ── فيديوهات بروفايل اللاعب (قراءة + إعجاب + تعليق — فيديوهاته حصراً) ──
+// تضيفها الإدارة كروابط خارجية؛ اللاعب يشاهد ويتفاعل ولا يضيف.
+const videoIdParam = [param('id').isMongoId().withMessage('معرّف الفيديو غير صحيح')];
+
+router.get('/videos', getMyVideos);
+router.post('/videos/:id/like', videoIdParam, validate, likeAsPlayer);
+router.delete('/videos/:id/like', videoIdParam, validate, unlikeAsPlayer);
+router.get('/videos/:id/comments', videoIdParam, validate, listCommentsAsPlayer);
+router.post(
+  '/videos/:id/comments',
+  [
+    ...videoIdParam,
+    body('text').notEmpty().withMessage('نص التعليق مطلوب')
+      .isLength({ max: 1000 }).withMessage('التعليق لا يمكن أن يتجاوز 1000 حرف'),
+  ],
+  validate,
+  addCommentAsPlayer
+);
+router.delete(
+  '/videos/:id/comments/:commentId',
+  [
+    ...videoIdParam,
+    param('commentId').isMongoId().withMessage('معرّف التعليق غير صحيح'),
+  ],
+  validate,
+  removeCommentAsPlayer
+);
 
 // ── متجر الأكاديمية (قراءة + إنشاء طلب شراء — أكاديمية اللاعب حصراً) ──
 router.get('/store', getPlayerStore);

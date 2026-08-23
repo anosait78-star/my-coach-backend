@@ -48,6 +48,8 @@ const activitySchema = new mongoose.Schema(
         'CREATE_MATCH', 'UPDATE_MATCH', 'DELETE_MATCH',
         // طلبات الانضمام الذاتي (Join Requests)
         'APPROVE_JOIN_REQUEST', 'REJECT_JOIN_REQUEST',
+        // فيديوهات بروفايل اللاعب (Player Videos)
+        'CREATE_PLAYER_VIDEO', 'UPDATE_PLAYER_VIDEO', 'DELETE_PLAYER_VIDEO',
       ],
     },
     entityType: {
@@ -57,7 +59,7 @@ const activitySchema = new mongoose.Schema(
         'PLAYER', 'SUBSCRIPTION', 'EVALUATION', 'ATTENDANCE', 'USER', 'ACADEMY',
         'STAFF', 'STAFF_ATTENDANCE', 'PAYROLL', 'EXPENSE',
         'PLATFORM_SUBSCRIPTION', 'PLAYER_ACCOUNT', 'GROUP', 'ALBUM',
-        'PRODUCT', 'STORE_ORDER', 'MATCH',
+        'PRODUCT', 'STORE_ORDER', 'MATCH', 'PLAYER_VIDEO',
       ],
     },
     entityId: {
