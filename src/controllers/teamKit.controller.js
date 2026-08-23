@@ -307,20 +307,34 @@ const createPlayerBooking = async (req, res, next) => {
   const player = req.player;
   const academyId = player.academyId;
 
+  // الصورة تُرفع إلى Cloudinary قبل وصولنا هنا (multer)، فأي رفض بعد ذلك
+  // يجب أن يحذفها وإلا تراكمت صور يتيمة — نفس نمط طلبات الانضمام.
+  const receiptFile = req.file;
+  const reject = async (message, statusCode = 400) => {
+    if (receiptFile?.filename) {
+      await deleteImage(receiptFile.filename).catch(() => {});
+    }
+    return next(new AppError(message, statusCode));
+  };
+
+  if (!receiptFile) {
+    return next(new AppError('صورة إيصال الدفع مطلوبة', 400));
+  }
+
   const kit = await TeamKit.findOne({ academyId });
-  if (!kit) return next(new AppError('لا يوجد طقم فريق متاح حالياً', 404));
+  if (!kit) return reject('لا يوجد طقم فريق متاح حالياً', 404);
 
   const shirtName = String(req.body.shirtName || '').trim();
-  if (!shirtName) return next(new AppError('الاسم على التيشرت مطلوب', 400));
+  if (!shirtName) return reject('الاسم على التيشرت مطلوب');
 
   const shirtNumber = Number(req.body.shirtNumber);
   if (!Number.isFinite(shirtNumber) || shirtNumber < 0 || shirtNumber > 999) {
-    return next(new AppError('الرقم على التيشرت غير صحيح', 400));
+    return reject('الرقم على التيشرت غير صحيح');
   }
 
   const size = req.body.size;
   if (!kit.availableSizes.includes(size)) {
-    return next(new AppError('المقاس غير متاح لهذا الطقم', 400));
+    return reject('المقاس غير متاح لهذا الطقم');
   }
 
   const academy = await Academy.findById(academyId).select('currency');
@@ -336,6 +350,8 @@ const createPlayerBooking = async (req, res, next) => {
     shirtName,
     shirtNumber,
     size,
+    receipt_url: receiptFile.path,
+    receipt_public_id: receiptFile.filename,
     status: 'pending_review',
     source: 'player',
   });

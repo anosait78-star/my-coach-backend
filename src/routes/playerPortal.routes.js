@@ -20,9 +20,10 @@ const {
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { getPlayerKit, createPlayerBooking } = require('../controllers/teamKit.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
-const { uploadPlayerImage } = require('../config/cloudinary');
+const { uploadPlayerImage, uploadKitReceipt } = require('../config/cloudinary');
 const { KIT_SIZES } = require('../utils/kitSizes');
 const validate = require('../middleware/validate');
+const validateUpload = require('../middleware/validateUpload');
 
 const router = express.Router();
 
@@ -78,16 +79,20 @@ router.post(
 );
 
 // ── طقم الفريق (قراءة + إنشاء حجز — أكاديمية اللاعب حصراً) ──
+// الحجز multipart: صورة إيصال الدفع مطلوبة ليراجعها المدير قبل الموافقة
+// (حد 2MB مطبَّق في multer). validateUpload يحذف الصورة المرفوعة إن سقط
+// التحقّق، فلا تبقى صور يتيمة على Cloudinary.
 router.get('/team-kit', getPlayerKit);
 router.post(
   '/team-kit/bookings',
+  uploadKitReceipt.single('receipt'),
   [
     body('shirtName').notEmpty().withMessage('الاسم على التيشرت مطلوب')
       .isLength({ max: 30 }).withMessage('الاسم على التيشرت لا يمكن أن يتجاوز 30 حرف'),
     body('shirtNumber').isInt({ min: 0, max: 999 }).withMessage('الرقم على التيشرت غير صحيح'),
     body('size').isIn(KIT_SIZES).withMessage('المقاس غير صحيح'),
   ],
-  validate,
+  validateUpload,
   createPlayerBooking
 );
 

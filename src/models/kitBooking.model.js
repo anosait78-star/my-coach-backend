@@ -46,6 +46,19 @@ const kitBookingSchema = new mongoose.Schema(
       required: [true, 'المقاس مطلوب'],
     },
 
+    // صورة إيصال الدفع التي يرفعها اللاعب مع الحجز، ليراجعها المدير قبل
+    // الموافقة. حجوزات المدير المباشرة لا إيصال لها (null).
+    receipt_url: {
+      type: String,
+      default: null,
+    },
+    // مخفي عن العميل؛ يُستخدم لحذف الصورة من Cloudinary.
+    receipt_public_id: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
     status: {
       type: String,
       enum: ['pending_review', 'approved', 'rejected'],
@@ -89,6 +102,7 @@ const kitBookingSchema = new mongoose.Schema(
         ret.kitId = ret.kitId?.toString();
         ret.playerId = ret.playerId?.toString();
         ret.reviewedBy = ret.reviewedBy?.toString() || null;
+        delete ret.receipt_public_id;
         delete ret.__v;
         return ret;
       },

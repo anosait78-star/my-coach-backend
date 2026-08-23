@@ -60,6 +60,20 @@ const storeProductStorage = new CloudinaryStorage({
   },
 });
 
+// إيصال دفع حجز طقم الفريق — نفس مجلد إيصالات طلبات الانضمام وبنفس
+// التحويلات، فكلاهما صورة إيصال يراجعها المدير.
+const kitReceiptStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'basketball_academy/receipts',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 1600, height: 1600, crop: 'limit' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  },
+});
+
 // صورة طقم الفريق — نفس خدمة Cloudinary، مجلد مستقل. لا خدمة رفع جديدة.
 const teamKitStorage = new CloudinaryStorage({
   cloudinary,
@@ -165,6 +179,12 @@ const uploadKitImage = multer({
   fileFilter,
 });
 
+const uploadKitReceipt = multer({
+  storage: kitReceiptStorage,
+  limits: { fileSize: MAX_IMAGE_BYTES },
+  fileFilter,
+});
+
 const uploadJoinRequestFiles = multer({
   storage: joinRequestStorage,
   limits: { fileSize: MAX_IMAGE_BYTES },
@@ -186,6 +206,7 @@ module.exports = {
   uploadAlbumImage,
   uploadStoreImage,
   uploadKitImage,
+  uploadKitReceipt,
   uploadJoinRequestFiles,
   deleteImage,
   MAX_IMAGE_BYTES,
