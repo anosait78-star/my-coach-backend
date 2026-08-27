@@ -36,4 +36,13 @@ const restrictTo = (...roles) => {
   };
 };
 
-module.exports = { protect, restrictTo };
+// يمنع الحسابات الإدارية المحدودة (canViewReports = false) من الوصول
+// إلى الإحصائيات والإيرادات والتقارير، مهما كان دورها.
+const requireReportsAccess = (req, res, next) => {
+  if (req.user && req.user.canViewReports === false) {
+    return next(new AppError('ليس لديك صلاحية الاطّلاع على الإحصائيات والتقارير', 403));
+  }
+  next();
+};
+
+module.exports = { protect, restrictTo, requireReportsAccess };

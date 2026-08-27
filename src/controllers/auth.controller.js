@@ -34,6 +34,7 @@ const login = async (req, res, next) => {
       role: user.role,
       academy_id: user.academyId ? user.academyId._id : null,
       academy_name: user.academyId ? user.academyId.name : null,
+      canViewReports: user.canViewReports !== false,
       created_at: user.created_at,
     },
   });
@@ -55,6 +56,7 @@ const getMe = async (req, res, next) => {
       role: user.role,
       academy_id: user.academyId ? user.academyId._id : null,
       academy_name: user.academyId ? user.academyId.name : null,
+      canViewReports: user.canViewReports !== false,
       created_at: user.created_at,
     },
   });
@@ -80,6 +82,7 @@ const updateMe = async (req, res, next) => {
       role: user.role,
       academy_id: user.academyId ? user.academyId._id : null,
       academy_name: user.academyId ? user.academyId.name : null,
+      canViewReports: user.canViewReports !== false,
       created_at: user.created_at,
     },
   });

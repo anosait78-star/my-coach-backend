@@ -40,6 +40,13 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // صلاحية الاطّلاع على لوحة الإحصائيات والإيرادات والتقارير.
+    // الافتراضي true حفاظاً على سلوك الحسابات القائمة؛ الحسابات الإدارية
+    // المحدودة (مدير عام بلا صلاحيات مالية) تُنشأ بـ false.
+    canViewReports: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },

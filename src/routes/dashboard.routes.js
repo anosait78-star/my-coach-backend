@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { protect, restrictTo, requireReportsAccess } = require('../middleware/auth.middleware');
 const {
   getDashboardStats,
   getRevenueByMonth,
@@ -14,6 +14,7 @@ const {
 
 router.use(protect);
 router.use(restrictTo('super_admin', 'academy_admin'));
+router.use(requireReportsAccess);
 
 router.get('/stats', getDashboardStats);
 router.get('/revenue-by-month', getRevenueByMonth);
