@@ -110,11 +110,15 @@ const academySchema = new mongoose.Schema(
   }
 );
 
+// عدّاد اللاعبين المعروض على بطاقة الأكاديمية — لا بدّ أن يطابق ما تعرضه
+// صفحة اللاعبين بالضبط: النشطون المعتمدون فقط، بلا طلبات انضمام معلّقة أو
+// مرفوضة (ولا لاعبين مُعطَّلين).
 academySchema.virtual('player_count', {
   ref: 'Player',
   localField: '_id',
   foreignField: 'academyId',
   count: true,
+  match: { isActive: true, ...require('./player.model').APPROVED_ONLY },
 });
 
 academySchema.index({ name: 'text' });
