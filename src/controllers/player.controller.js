@@ -50,8 +50,9 @@ const getPlayers = async (req, res, next) => {
   const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
-  // Build base filter
-  const filter = {};
+  // Build base filter — طلبات الانضمام المعلّقة والمرفوضة ليست لاعبين بعد،
+  // فلا تظهر في القائمة إطلاقاً (تُراجَع من شاشة طلبات الانضمام).
+  const filter = { ...Player.APPROVED_ONLY };
 
   // Active filter (super_admin can request inactive players)
   if (req.query.showInactive === 'true' && req.user.role === 'super_admin') {
@@ -165,6 +166,7 @@ const getPlayersBirthdays = async (req, res, next) => {
       $match: {
         academyId: new mongoose.Types.ObjectId(academyId),
         isActive: true,
+        ...Player.APPROVED_ONLY,
       },
     },
     { $addFields: { _birthMonth: { $month: '$birthDate' } } },
@@ -187,6 +189,7 @@ const searchPlayers = async (req, res, next) => {
   const regex = new RegExp(escapeRegex(q), 'i');
   const filter = {
     isActive: true,
+    ...Player.APPROVED_ONLY,
     $or: [
       { fullName: regex },
       { playerCode: regex },
@@ -597,7 +600,9 @@ const listJoinRequests = async (req, res, next) => {
     academyId = req.user.academyId;
   }
 
-  const filter = { academyId, registrationStatus: 'pending' };
+  // ?status=pending (الافتراضي) أو rejected — تبويبا شاشة طلبات الانضمام.
+  const status = req.query.status === 'rejected' ? 'rejected' : 'pending';
+  const filter = { academyId, registrationStatus: status };
   const [requests, total] = await Promise.all([
     Player.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
     Player.countDocuments(filter),
@@ -622,7 +627,9 @@ const approveJoinRequest = async (req, res, next) => {
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية على هذا الطلب', 403));
   }
-  if (player.registrationStatus !== 'pending') {
+  // يُقبل الطلب المعلّق، وكذلك المرفوض سابقاً — الأكاديمية قد تُراجع قرارها
+  // بعد تعديل البيانات، فيعود اللاعب من تبويب "مرفوض" بلا إعادة تسجيل.
+  if (!['pending', 'rejected'].includes(player.registrationStatus)) {
     return next(new AppError('هذا الطلب تمت مراجعته بالفعل', 409));
   }
 

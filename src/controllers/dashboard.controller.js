@@ -27,9 +27,9 @@ const getDashboardStats = async (req, res, next) => {
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
   const [playerStats, subscriptionStats, evaluationStats, groupStats] = await Promise.all([
-    // 1. Players aggregation
+    // 1. Players aggregation — طلبات الانضمام المعلّقة/المرفوضة خارج كل عدّ.
     Player.aggregate([
-      { $match: match },
+      { $match: { ...match, ...Player.APPROVED_ONLY } },
       {
         $group: {
           _id: null,
@@ -101,6 +101,7 @@ const getDashboardStats = async (req, res, next) => {
                   $and: [
                     { $eq: ['$groupId', '$$gid'] },
                     { $eq: ['$isActive', true] },
+                    { $not: [{ $in: ['$registrationStatus', ['pending', 'rejected']] }] },
                   ],
                 },
               },
@@ -251,7 +252,7 @@ const getSubscriptionsByType = async (req, res, next) => {
 // GET /api/v1/dashboard/players-by-birth-year
 const getPlayersByBirthYear = async (req, res, next) => {
   const match = buildAcademyMatch(req);
-  const activeMatch = { ...match, isActive: true };
+  const activeMatch = { ...match, isActive: true, ...Player.APPROVED_ONLY };
 
   const results = await Player.aggregate([
     { $match: activeMatch },
@@ -343,7 +344,7 @@ const getSportStats = async (req, res, next) => {
   if (!sport) return next(new AppError('الرياضة مطلوبة', 400));
 
   const now = new Date();
-  const playerMatch = { ...match, sport, isActive: true };
+  const playerMatch = { ...match, sport, isActive: true, ...Player.APPROVED_ONLY };
 
   const [totalPlayers, recentPlayers, subStats] = await Promise.all([
     Player.countDocuments(playerMatch),

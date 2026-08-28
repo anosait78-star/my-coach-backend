@@ -192,4 +192,13 @@ playerSchema.pre('validate', async function (next) {
 });
 
 const Player = mongoose.model('Player', playerSchema);
+
+// شرط "اللاعبون المعتمدون فقط" — يُدمج في كل استعلام يعرض أو يعدّ اللاعبين،
+// حتى لا يظهر طلب انضمام معلّق أو مرفوض في قوائم اللاعبين ولا في الإحصائيات.
+// نستخدم $nin بدل المساواة بـ 'approved' عمداً: أي وثيقة قديمة بلا الحقل
+// (الافتراضي لا يُطبَّق بأثر رجعي) تبقى ظاهرة بدل أن تختفي بصمت.
+Player.APPROVED_ONLY = Object.freeze({
+  registrationStatus: { $nin: ['pending', 'rejected'] },
+});
+
 module.exports = Player;

@@ -173,7 +173,7 @@ const getAccountStats = async (req, res, next) => {
   }
 
   const [totalActive, accountPlayerIds, portalEnabled] = await Promise.all([
-    Player.countDocuments({ academyId, isActive: true }),
+    Player.countDocuments({ academyId, isActive: true, ...Player.APPROVED_ONLY }),
     PlayerAccount.find({ academyId }).distinct('playerId'),
     isPortalEnabled(academyId),
   ]);
@@ -181,6 +181,7 @@ const getAccountStats = async (req, res, next) => {
   const withAccount = await Player.countDocuments({
     academyId,
     isActive: true,
+    ...Player.APPROVED_ONLY,
     _id: { $in: accountPlayerIds },
   });
 

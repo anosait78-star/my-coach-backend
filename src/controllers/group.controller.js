@@ -37,7 +37,7 @@ const withOccupancy = async (groups) => {
 
   const groupIds = list.map((g) => g._id);
   const counts = await Player.aggregate([
-    { $match: { groupId: { $in: groupIds }, isActive: true } },
+    { $match: { groupId: { $in: groupIds }, isActive: true, ...Player.APPROVED_ONLY } },
     { $group: { _id: '$groupId', count: { $sum: 1 } } },
   ]);
   const countMap = new Map(counts.map((c) => [c._id.toString(), c.count]));
@@ -103,7 +103,7 @@ const getGroupById = async (req, res, next) => {
   assertAccess(req, group);
 
   const [withCount] = await withOccupancy([group]);
-  const players = await Player.find({ groupId: group._id, isActive: true }).sort({ fullName: 1 });
+  const players = await Player.find({ groupId: group._id, isActive: true, ...Player.APPROVED_ONLY }).sort({ fullName: 1 });
 
   return sendSuccess(res, {
     data: { ...withCount, players },
@@ -178,7 +178,7 @@ const deleteGroup = async (req, res, next) => {
   assertAccess(req, group);
 
   // منع حذف مجموعة تحتوي لاعبين نشطين — لتفادي اللاعبين اليتامى.
-  const playersCount = await Player.countDocuments({ groupId: group._id, isActive: true });
+  const playersCount = await Player.countDocuments({ groupId: group._id, isActive: true, ...Player.APPROVED_ONLY });
   if (playersCount > 0) {
     return res.status(409).json({
       success: false,

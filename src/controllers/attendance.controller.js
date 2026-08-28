@@ -63,6 +63,12 @@ const recordAttendance = async (req, res, next) => {
   }
   logger.info(`[ATTENDANCE] player found: ${player.playerCode} - ${player.fullName}`);
 
+  // طلب انضمام لم تتم الموافقة عليه بعد ليس لاعباً في الأكاديمية، فلا يُسجَّل له حضور.
+  if (['pending', 'rejected'].includes(player.registrationStatus)) {
+    logger.warn(`[ATTENDANCE] blocked — registrationStatus=${player.registrationStatus} for ${player.playerCode}`);
+    return next(new AppError('لم تتم الموافقة على طلب انضمام هذا اللاعب بعد', 403));
+  }
+
   // 2) فحص صلاحية النطاق
   if (
     req.user.role !== 'super_admin' &&
@@ -220,7 +226,7 @@ const getAttendanceReport = async (req, res, next) => {
     ? req.query.sport.trim() : null;
 
   // (أ) لاعبو الأكاديمية النشطون
-  const playerFilter = { academyId, isActive: true };
+  const playerFilter = { academyId, isActive: true, ...Player.APPROVED_ONLY };
   if (sport) playerFilter.sport = sport;
   const players = await Player.find(playerFilter)
     .select('fullName playerCode sport attendanceDays');
