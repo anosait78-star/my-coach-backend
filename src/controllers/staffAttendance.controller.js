@@ -3,6 +3,11 @@ const Staff = require('../models/staff.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
+const {
+  resolveAcademyScope,
+  resolveAcademyScopeAsObjectId,
+  assertAcademyAccess,
+} = require('../utils/academyScope');
 
 // ─── POST /staff-attendance ──────────────────────────────────────────────────
 const markAttendance = async (req, res, next) => {
@@ -10,9 +15,7 @@ const markAttendance = async (req, res, next) => {
 
   const staff = await Staff.findById(staffId);
   if (!staff) return next(new AppError('الموظف غير موجود', 404));
-  if (staff.academyId.toString() !== req.user.academyId?.toString()) {
-    return next(new AppError('ليس لديك صلاحية لتسجيل حضور هذا الموظف', 403));
-  }
+  assertAcademyAccess(req, staff, 'ليس لديك صلاحية لتسجيل حضور هذا الموظف');
 
   const record = await StaffAttendance.findOneAndUpdate(
     { staffId, date },
@@ -36,7 +39,7 @@ const markAttendance = async (req, res, next) => {
 
 // ─── GET /staff-attendance ───────────────────────────────────────────────────
 const getAttendanceHistory = async (req, res, next) => {
-  const filter = { academyId: req.user.academyId };
+  const filter = { academyId: resolveAcademyScope(req) };
 
   if (req.query.staffId) filter.staffId = req.query.staffId;
 
@@ -57,8 +60,11 @@ const getAttendanceReport = async (req, res, next) => {
     return next(new AppError('تاريخ البداية والنهاية مطلوبان', 400));
   }
 
+  // ObjectId وليس نصاً: mongoose لا يصبّ الأنواع داخل $match في aggregate.
+  const academyId = resolveAcademyScopeAsObjectId(req);
+
   const matchFilter = {
-    academyId: req.user.academyId,
+    academyId,
     date: { $gte: startDate, $lte: endDate },
   };
 
@@ -67,7 +73,7 @@ const getAttendanceReport = async (req, res, next) => {
     { $group: { _id: { staffId: '$staffId', status: '$status' }, count: { $sum: 1 } } },
   ]);
 
-  const staffList = await Staff.find({ academyId: req.user.academyId, isActive: true })
+  const staffList = await Staff.find({ academyId, isActive: true })
     .select('fullName position');
 
   const report = staffList.map((s) => {

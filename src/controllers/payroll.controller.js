@@ -4,6 +4,7 @@ const StaffAttendance = require('../models/staff_attendance.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
+const { resolveAcademyScope, assertAcademyAccess } = require('../utils/academyScope');
 
 const computeNetSalary = ({ baseSalary, monthlyAttendanceTarget, presentCount, deductionType, deductionValue }) => {
   const absentCount = Math.max(monthlyAttendanceTarget - presentCount, 0);
@@ -26,7 +27,7 @@ const generatePayroll = async (req, res, next) => {
     return next(new AppError('الشهر مطلوب بصيغة YYYY-MM', 400));
   }
 
-  const staffFilter = { academyId: req.user.academyId, isActive: true };
+  const staffFilter = { academyId: resolveAcademyScope(req), isActive: true };
   if (staffId) staffFilter._id = staffId;
 
   const staffList = await Staff.find(staffFilter);
@@ -92,7 +93,7 @@ const generatePayroll = async (req, res, next) => {
 
 // ─── GET /payroll ────────────────────────────────────────────────────────────
 const getPayrollList = async (req, res, next) => {
-  const filter = { academyId: req.user.academyId };
+  const filter = { academyId: resolveAcademyScope(req) };
   if (req.query.month) filter.month = req.query.month;
   if (req.query.staffId) filter.staffId = req.query.staffId;
   if (req.query.status) filter.status = req.query.status;
@@ -108,7 +109,7 @@ const getPayrollReport = async (req, res, next) => {
     return next(new AppError('الشهر مطلوب بصيغة YYYY-MM', 400));
   }
 
-  const records = await Payroll.find({ academyId: req.user.academyId, month })
+  const records = await Payroll.find({ academyId: resolveAcademyScope(req), month })
     .populate('staffId', 'fullName position');
 
   const report = records.map((r) => ({
@@ -137,9 +138,7 @@ const getPayrollReport = async (req, res, next) => {
 const markPaid = async (req, res, next) => {
   const payroll = await Payroll.findById(req.params.id);
   if (!payroll) return next(new AppError('سجل الراتب غير موجود', 404));
-  if (payroll.academyId.toString() !== req.user.academyId?.toString()) {
-    return next(new AppError('ليس لديك صلاحية لتعديل هذا السجل', 403));
-  }
+  assertAcademyAccess(req, payroll, 'ليس لديك صلاحية لتعديل هذا السجل');
 
   payroll.status = 'paid';
   payroll.paidAt = new Date();

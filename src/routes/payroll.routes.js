@@ -6,13 +6,16 @@ const {
   getPayrollReport,
   markPaid,
 } = require('../controllers/payroll.controller');
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { protect, restrictTo, requireReportsAccess } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('academy_admin'));
+router.use(restrictTo('super_admin', 'academy_admin'));
+// الرواتب بيانات مالية: تُحجب عن الحسابات الإدارية المحدودة (canViewReports=false)
+// مهما كان دورها — نفس قاعدة الإحصائيات والتقارير.
+router.use(requireReportsAccess);
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
 
 const generateValidators = [

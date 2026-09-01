@@ -37,10 +37,11 @@ const restrictTo = (...roles) => {
 };
 
 // يمنع الحسابات الإدارية المحدودة (canViewReports = false) من الوصول
-// إلى الإحصائيات والإيرادات والتقارير، مهما كان دورها.
+// إلى الإحصائيات والإيرادات والتقارير والبيانات المالية (الرواتب/المصروفات)،
+// مهما كان دورها.
 const requireReportsAccess = (req, res, next) => {
   if (req.user && req.user.canViewReports === false) {
-    return next(new AppError('ليس لديك صلاحية الاطّلاع على الإحصائيات والتقارير', 403));
+    return next(new AppError('ليس لديك صلاحية الاطّلاع على الإحصائيات والتقارير والبيانات المالية', 403));
   }
   next();
 };

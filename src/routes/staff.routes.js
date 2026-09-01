@@ -15,8 +15,11 @@ const Staff = require('../models/staff.model');
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('academy_admin'));
+router.use(restrictTo('super_admin', 'academy_admin'));
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
+
+// الحسابات الإدارية المحدودة لا ترسل حقولاً مالية أصلاً، فلا تُطالَب بها.
+const salaryVisible = (value, { req }) => req.user?.canViewReports !== false;
 
 const createValidators = [
   body('fullName')
@@ -41,9 +44,11 @@ const createValidators = [
     .notEmpty().withMessage('عدد أيام الحضور المطلوبة مطلوب')
     .isInt({ min: 1 }).withMessage('عدد أيام الحضور المطلوبة غير صحيح'),
   body('deductionType')
+    .if(salaryVisible)
     .notEmpty().withMessage('نوع الخصم مطلوب')
     .isIn(['percentage', 'fixed']).withMessage('نوع الخصم غير صحيح'),
   body('deductionValue')
+    .if(salaryVisible)
     .notEmpty().withMessage('قيمة الخصم مطلوبة')
     .isFloat({ min: 0 }).withMessage('قيمة الخصم غير صحيحة')
     .custom((value, { req }) => {

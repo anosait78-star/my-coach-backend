@@ -11,7 +11,7 @@ const validate = require('../middleware/validate');
 const router = express.Router();
 
 router.use(protect);
-router.use(restrictTo('academy_admin'));
+router.use(restrictTo('super_admin', 'academy_admin'));
 // حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
 
 const markValidators = [
