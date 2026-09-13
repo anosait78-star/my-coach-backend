@@ -74,6 +74,20 @@ const playerSchema = new mongoose.Schema(
       type: String,
       maxlength: [500, 'الملاحظات لا يمكن أن تتجاوز 500 حرف'],
     },
+    // نبذة عامة عن اللاعب — تظهر في صفحة المشاركة العامة (بخلاف notes الداخلية).
+    bio: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: [1000, 'النبذة لا يمكن أن تتجاوز 1000 حرف'],
+    },
+    // رمز رابط المشاركة العامة (عشوائي، لا يُشتق من المعرّف). null = لا رابط.
+    // مخفي عن الـ API العادي؛ يُقرأ فقط من مسار إدارة المشاركة.
+    shareToken: {
+      type: String,
+      default: null,
+      select: false,
+    },
     // الرياضة الخاصة باللاعب — تُعيَّن تلقائياً إذا كانت الأكاديمية ذات رياضة واحدة،
     // وتكون إلزامية من الواجهة إذا كانت الأكاديمية متعددة الرياضات.
     sport: {
@@ -160,6 +174,8 @@ const playerSchema = new mongoose.Schema(
     },
   }
 );
+
+playerSchema.index({ shareToken: 1 }, { unique: true, sparse: true });
 
 // طلبات الانضمام المعلّقة لكل أكاديمية — تُستعلم بكثرة من شاشة "طلبات الانضمام".
 playerSchema.index({ academyId: 1, registrationStatus: 1 });

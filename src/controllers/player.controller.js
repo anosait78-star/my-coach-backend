@@ -63,11 +63,14 @@ const getPlayers = async (req, res, next) => {
 
   // Academy scope — كل مستخدم غير super_admin مُقيَّد حتمياً بأكاديميته.
   // super_admin فقط يمرّر academyId صراحةً. (يشمل دور admin + academy_admin.)
+  // academyId = 'all' (super_admin فقط) = لاعبو كل الفروع بلا قيد أكاديمية.
   if (req.user.role === 'super_admin') {
     if (!req.query.academyId) {
       return next(new AppError('معرّف الأكاديمية مطلوب', 400));
     }
-    filter.academyId = req.query.academyId;
+    if (req.query.academyId !== 'all') {
+      filter.academyId = req.query.academyId;
+    }
   } else {
     filter.academyId = req.user.academyId;
   }
@@ -103,7 +106,8 @@ const getPlayers = async (req, res, next) => {
   // Account filter (Player Portal) — 'true' = لديهم حساب، 'false' = بدون حساب.
   // إضافي بالكامل: غياب البارامتر = السلوك القديم تماماً.
   if (req.query.hasAccount === 'true' || req.query.hasAccount === 'false') {
-    const accountPlayerIds = await PlayerAccount.find({ academyId: filter.academyId }).distinct('playerId');
+    const accountScope = filter.academyId ? { academyId: filter.academyId } : {};
+    const accountPlayerIds = await PlayerAccount.find(accountScope).distinct('playerId');
     filter._id = req.query.hasAccount === 'true'
       ? { $in: accountPlayerIds }
       : { $nin: accountPlayerIds };

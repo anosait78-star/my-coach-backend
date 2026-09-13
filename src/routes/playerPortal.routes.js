@@ -19,6 +19,7 @@ const {
 } = require('../controllers/playerVideo.controller');
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { getPlayerKit, createPlayerBooking } = require('../controllers/teamKit.controller');
+const { createPlayerRenewalRequest } = require('../controllers/renewalRequest.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage, uploadKitReceipt } = require('../config/cloudinary');
 const { KIT_SIZES } = require('../utils/kitSizes');
@@ -94,6 +95,19 @@ router.post(
   ],
   validateUpload,
   createPlayerBooking
+);
+
+// ── طلب تجديد الاشتراك (إيصال مطلوب — يراجعه السوبر أدمن) ──
+// نفس multer إيصالات طقم الفريق (مجلد receipts، حد 2MB).
+router.post(
+  '/renewal-requests',
+  uploadKitReceipt.single('receipt'),
+  [
+    body('note').optional()
+      .isLength({ max: 500 }).withMessage('الملاحظة لا يمكن أن تتجاوز 500 حرف'),
+  ],
+  validateUpload,
+  createPlayerRenewalRequest
 );
 
 // ── محادثة اللاعب مع أكاديميته (نص فقط) ──

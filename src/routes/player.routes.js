@@ -22,6 +22,12 @@ const {
   togglePlayerAccount,
   getAccountStats,
 } = require('../controllers/playerAccountAdmin.controller');
+const {
+  getShareInfo,
+  enableShare,
+  disableShare,
+  updateBio,
+} = require('../controllers/publicProfile.controller');
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 const { uploadPlayerImage } = require('../config/cloudinary');
@@ -137,6 +143,17 @@ router.get('/join-requests', listJoinRequests);
 
 // GET  /players/:id
 router.get('/:id', getPlayerById);
+
+// ─── رابط مشاركة البروفايل العام + النبذة ────────────────────────────────────
+router.get('/:id/share', getShareInfo);
+router.post('/:id/share', enableShare);
+router.delete('/:id/share', disableShare);
+router.patch(
+  '/:id/bio',
+  [body('bio').isString().isLength({ max: 1000 }).withMessage('النبذة لا يمكن أن تتجاوز 1000 حرف')],
+  validate,
+  updateBio
+);
 
 // ─── Player account management (Player Portal) — إضافي بالكامل ──────────────
 

@@ -35,6 +35,7 @@ const notificationSchema = new mongoose.Schema(
         'JOIN_REQUEST_REJECTED',
         'PLAYER_VIDEO_ADDED',
         'PLAYER_VIDEO_COMMENT',
+        'RENEWAL_REQUEST_REVIEWED',
       ],
       required: true,
     },

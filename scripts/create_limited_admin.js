@@ -26,12 +26,12 @@ const run = async () => {
   const existing = await User.findOne({ email: EMAIL });
 
   if (existing) {
+    // الحساب موجود: نحدّث الصلاحيات فقط ولا نلمس الباسورد الحالي.
     existing.name = NAME;
-    existing.password = PASSWORD;
     existing.role = 'super_admin';
     existing.academyId = undefined;
     existing.isActive = true;
-    existing.canViewReports = false;
+    existing.canViewReports = true;
     await existing.save();
     console.log(`✅ تم تحديث الحساب: ${EMAIL}`);
   } else {
@@ -41,7 +41,7 @@ const run = async () => {
       password: PASSWORD,
       role: 'super_admin',
       isActive: true,
-      canViewReports: false,
+      canViewReports: true,
     });
     console.log(`✅ تم إنشاء الحساب: ${EMAIL}`);
   }
@@ -49,7 +49,7 @@ const run = async () => {
   console.log('\n=================================');
   console.log(`Email:    ${EMAIL}`);
   console.log(`Password: ${PASSWORD}`);
-  console.log('Role:     super_admin (بدون إحصائيات/تقارير)');
+  console.log('Role:     super_admin (صلاحيات كاملة)');
   console.log('=================================');
   await mongoose.disconnect();
   process.exit(0);

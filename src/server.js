@@ -36,6 +36,8 @@ const playerVideoRoutes = require('./routes/playerVideo.routes');
 const storeRoutes = require('./routes/store.routes');
 const teamKitRoutes = require('./routes/teamKit.routes');
 const matchRoutes = require('./routes/match.routes');
+const renewalRequestRoutes = require('./routes/renewalRequest.routes');
+const publicProfileRoutes = require('./routes/publicProfile.routes');
 
 const app = express();
 
@@ -129,6 +131,9 @@ app.use('/api/v1/player-videos', playerVideoRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/team-kit', teamKitRoutes);
 app.use('/api/v1/matches', matchRoutes);
+app.use('/api/v1/renewal-requests', renewalRequestRoutes);
+// عام (بلا protect) — صفحة مشاركة بروفايل اللاعب برمز عشوائي.
+app.use('/api/v1/public', publicProfileRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

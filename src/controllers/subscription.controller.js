@@ -200,10 +200,14 @@ const getSubscriptionsByAcademy = async (req, res, next) => {
   }
 
   const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  // الفرونت يجلب القائمة كاملة دفعة واحدة (500) ويفلترها محلياً، فسقف 100
+  // كان يقصّ الاشتراكات بصمت — خصوصاً في وضع "كل الفروع".
+  const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
 
-  const filter = { academyId };
+  // academyId = 'all' (super_admin فقط) = اشتراكات كل الفروع.
+  const filter =
+    req.user.role === 'super_admin' && academyId === 'all' ? {} : { academyId };
 
   // Type filter
   if (req.query.type && ['NEW_SUBSCRIPTION', 'RENEWAL'].includes(req.query.type)) {
