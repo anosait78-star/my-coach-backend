@@ -73,30 +73,35 @@ const listFamilies = async (req, res) => {
 };
 
 // ─── GET /families/candidates?search= ────────────────────────────────────────
-// حسابات لاعبين من كل الفروع، بالبحث في الاسم/الكود/هاتف ولي الأمر/اسم المستخدم.
+// حسابات لاعبين من كل الفروع. بدون بحث = كل الحسابات (مرتّبة بالاسم) ليختار
+// منها السوبر أدمن مباشرة؛ مع بحث = تصفية بالاسم/الكود/هاتف ولي الأمر/اسم المستخدم.
 const searchCandidates = async (req, res) => {
   const term = String(req.query.search || '').trim();
-  if (term.length < 2) {
-    return sendSuccess(res, { data: [], message: 'اكتب حرفين على الأقل للبحث' });
-  }
-  const regex = new RegExp(escapeRegex(term), 'i');
-  const players = await Player.find({
-    $or: [{ fullName: regex }, { playerCode: regex }, { parentPhone: regex }],
-  })
-    .select('_id')
-    .limit(100);
 
-  const accounts = await PlayerAccount.find({
-    $or: [{ playerId: { $in: players.map((p) => p._id) } }, { username: regex }],
-  })
+  let accountFilter = {};
+  if (term) {
+    const regex = new RegExp(escapeRegex(term), 'i');
+    const players = await Player.find({
+      $or: [{ fullName: regex }, { playerCode: regex }, { parentPhone: regex }],
+    })
+      .select('_id')
+      .limit(300);
+    accountFilter = {
+      $or: [{ playerId: { $in: players.map((p) => p._id) } }, { username: regex }],
+    };
+  }
+
+  const accounts = await PlayerAccount.find(accountFilter)
     .populate('playerId', 'fullName playerCode image_url')
-    .limit(50);
+    .limit(term ? 100 : 1000);
 
   const names = await academyNameMap(accounts);
-  return sendSuccess(res, {
-    data: accounts.filter((a) => a.playerId).map((a) => memberJson(a, names)),
-    message: 'تم البحث بنجاح',
-  });
+  const data = accounts
+    .filter((a) => a.playerId)
+    .map((a) => memberJson(a, names))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
+
+  return sendSuccess(res, { data, message: 'تم جلب الحسابات بنجاح' });
 };
 
 // ─── POST /families  { name?, accountIds[] (2+) } ────────────────────────────
