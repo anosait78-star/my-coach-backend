@@ -51,7 +51,8 @@ const enableShare = async (req, res, next) => {
 const disableShare = async (req, res, next) => {
   const player = await loadManagedPlayer(req, next);
   if (!player) return;
-  player.shareToken = null;
+  // إزالة الحقل نفسه لا ضبطه null (راجع فهرس shareToken في الموديل).
+  player.shareToken = undefined;
   await player.save();
   return sendSuccess(res, { data: shareInfo(player), message: 'تم إيقاف رابط المشاركة' });
 };

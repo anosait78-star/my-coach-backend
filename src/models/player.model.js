@@ -81,11 +81,11 @@ const playerSchema = new mongoose.Schema(
       trim: true,
       maxlength: [1000, 'النبذة لا يمكن أن تتجاوز 1000 حرف'],
     },
-    // رمز رابط المشاركة العامة (عشوائي، لا يُشتق من المعرّف). null = لا رابط.
+    // رمز رابط المشاركة العامة (عشوائي، لا يُشتق من المعرّف). غياب الحقل = لا رابط.
+    // بلا default عمداً: قيمة null مكرّرة تكسر الفهرس الفريد عند إنشاء أي لاعب.
     // مخفي عن الـ API العادي؛ يُقرأ فقط من مسار إدارة المشاركة.
     shareToken: {
       type: String,
-      default: null,
       select: false,
     },
     // الرياضة الخاصة باللاعب — تُعيَّن تلقائياً إذا كانت الأكاديمية ذات رياضة واحدة،
@@ -175,7 +175,16 @@ const playerSchema = new mongoose.Schema(
   }
 );
 
-playerSchema.index({ shareToken: 1 }, { unique: true, sparse: true });
+// فريد فقط بين اللاعبين الذين لديهم رابط فعلاً (نص). sparse لا يكفي لأنه
+// يفهرس null — وهذا ما كان يرفض إنشاء لاعب جديد بـ "القيمة موجودة مسبقاً".
+playerSchema.index(
+  { shareToken: 1 },
+  {
+    name: 'shareToken_unique_string',
+    unique: true,
+    partialFilterExpression: { shareToken: { $type: 'string' } },
+  }
+);
 
 // طلبات الانضمام المعلّقة لكل أكاديمية — تُستعلم بكثرة من شاشة "طلبات الانضمام".
 playerSchema.index({ academyId: 1, registrationStatus: 1 });
