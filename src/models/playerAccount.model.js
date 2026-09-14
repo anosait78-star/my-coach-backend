@@ -34,6 +34,13 @@ const playerAccountSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // العائلة التي دمجها السوبر أدمن (null = بلا عائلة). الحساب في عائلة
+    // واحدة فقط، ويستطيع التبديل لأي حساب آخر فيها بلا كلمة مرور.
+    familyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Family',
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
@@ -42,6 +49,7 @@ const playerAccountSchema = new mongoose.Schema(
         ret._id = ret._id.toString();
         ret.playerId = ret.playerId?.toString?.() ?? ret.playerId;
         ret.academyId = ret.academyId?.toString?.() ?? ret.academyId;
+        ret.familyId = ret.familyId?.toString?.() ?? null;
         delete ret.password;
         delete ret.__v;
         return ret;
@@ -51,6 +59,7 @@ const playerAccountSchema = new mongoose.Schema(
 );
 
 playerAccountSchema.index({ academyId: 1 });
+playerAccountSchema.index({ familyId: 1 });
 
 // توليد اسم مستخدم عالمي فريد nosait00001 عبر عدّاد ذرّي.
 playerAccountSchema.statics.generateUsername = async function () {

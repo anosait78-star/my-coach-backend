@@ -507,6 +507,12 @@ const createJoinRequest = async (req, res, next) => {
     }
   };
 
+  // صورة اللاعب إجبارية في التسجيل الذاتي (الواجهة تفرضها أيضاً).
+  if (!imageFile) {
+    await cleanupUploads();
+    return next(new AppError('صورة اللاعب إجبارية', 422));
+  }
+
   if (!receiptFile) {
     await cleanupUploads();
     return next(new AppError('صورة إيصال الدفع مطلوبة', 422));

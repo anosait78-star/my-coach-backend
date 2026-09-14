@@ -1,7 +1,12 @@
 const express = require('express');
 const { body } = require('express-validator');
 const rateLimit = require('express-rate-limit');
-const { playerLogin, playerMe } = require('../controllers/playerAuth.controller');
+const {
+  playerLogin,
+  playerMe,
+  playerFamily,
+  playerSwitch,
+} = require('../controllers/playerAuth.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const validate = require('../middleware/validate');
 
@@ -30,5 +35,15 @@ router.post(
 
 // GET /api/v1/auth/player/me
 router.get('/me', protectPlayer, playerMe);
+
+// ── عائلة الحسابات: عرض باقي الأفراد + التبديل بينهم بلا كلمة مرور ──
+router.get('/family', protectPlayer, playerFamily);
+router.post(
+  '/switch',
+  protectPlayer,
+  [body('accountId').isMongoId().withMessage('معرّف الحساب غير صحيح')],
+  validate,
+  playerSwitch
+);
 
 module.exports = router;
