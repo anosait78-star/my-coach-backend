@@ -1,11 +1,13 @@
 const mongoose = require('mongoose');
 const Attendance = require('../models/attendance.model');
 const Player = require('../models/player.model');
+const Subscription = require('../models/subscription.model');
 const AppError = require('../utils/AppError');
-const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
+const { sendSuccess } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
 const { notify } = require('../utils/notificationService');
+const escapeRegex = require('../utils/escapeRegex');
 
 // أسماء أيام الأسبوع العربية مرتبطة بـ Date.getDay() (0 = الأحد ... 6 = السبت)
 // مطابقة تماماً للقيم المخزّنة في player.attendanceDays و SportsConstants.weekDays.
@@ -13,10 +15,13 @@ const WEEKDAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأ�
 
 // تطبيع كود اللاعب القادم من الـ QR: يقبل 'PLAYER:Y-0001' أو 'Y-0001'.
 // نُزيل المسافات أولاً ثم بادئة PLAYER: (غير حسّاسة لحالة الأحرف) ثم المسافات مجدداً.
+// إدخال الكود بالأرقام فقط (أو بحرف صغير): '123' أو 'y-123' → 'Y-0123'.
 const normalizeCode = (raw) => {
   if (!raw) return '';
   let v = String(raw).trim();
   v = v.replace(/^PLAYER:/i, '').trim();
+  const digits = v.match(/^(?:Y-?)?(\d+)$/i);
+  if (digits) return 'Y-' + String(parseInt(digits[1], 10)).padStart(4, '0');
   return v;
 };
 
@@ -37,6 +42,38 @@ const playerSummary = (p) => ({
   sport: p.sport,
   image_url: p.image_url,
 });
+
+// حالة اشتراك اللاعب وحضوره هذا الشهر — تُعرض في نتيجة المسح مباشرة.
+// status: active | expiring (7 أيام أو أقل) | expired | none.
+const scanInfo = async (player, date) => {
+  const monthStart = date.slice(0, 8) + '01';
+  const [latestSub, presentThisMonth] = await Promise.all([
+    Subscription.findOne({ playerId: player._id }).sort({ endDate: -1 }).select('endDate'),
+    Attendance.countDocuments({ playerId: player._id, date: { $gte: monthStart, $lte: date } }),
+  ]);
+
+  let subscription = { status: 'none', endDate: null, daysRemaining: null };
+  if (latestSub) {
+    const ms = latestSub.endDate.getTime() - Date.now();
+    const daysRemaining = ms <= 0 ? 0 : Math.ceil(ms / (1000 * 60 * 60 * 24));
+    const status = ms < 0 ? 'expired' : daysRemaining <= 7 ? 'expiring' : 'active';
+    subscription = { status, endDate: latestSub.endDate, daysRemaining };
+  }
+
+  // الغياب = أيام تدريب اللاعب من أول الشهر حتى اليوم بلا حضور (نفس منطق التقرير).
+  const weekdayCounts = weekdayCountsInRange(monthStart, date);
+  const days = Array.isArray(player.attendanceDays) ? player.attendanceDays : [];
+  const expected = days.reduce((sum, d) => sum + (weekdayCounts[d] || 0), 0);
+
+  return {
+    subscription,
+    monthAttendance: {
+      present: presentThisMonth,
+      absent: Math.max(expected - presentThisMonth, 0),
+      expected,
+    },
+  };
+};
 
 // ─── POST /attendance ─────────────────────────────────────────────────────────
 // مسح واحد = طلب واحد: بحث عن اللاعب + منع التكرار + إنشاء السجل + إرجاع بيانات اللاعب.
@@ -109,6 +146,7 @@ const recordAttendance = async (req, res, next) => {
         alreadyToday: false,
         player: playerSummary(player),
         attendance,
+        ...(await scanInfo(player, date)),
       },
       message: 'تم تسجيل الحضور بنجاح',
       statusCode: 201,
@@ -121,6 +159,7 @@ const recordAttendance = async (req, res, next) => {
           recorded: false,
           alreadyToday: true,
           player: playerSummary(player),
+          ...(await scanInfo(player, date)),
         },
         message: 'تم تسجيل حضور هذا اللاعب مسبقاً اليوم',
       });
@@ -164,6 +203,24 @@ const getAttendance = async (req, res, next) => {
     filter.playerId = req.query.playerId;
   }
 
+  // بحث باسم اللاعب أو كوده في كل السجل (لا في الصفحة المحمّلة فقط).
+  // الأرقام وحدها تعني الكود: '123' = Y-0123 بالضبط.
+  const term = String(req.query.search || '').trim();
+  if (term) {
+    const code = normalizeCode(term);
+    const isCode = /^Y-\d+$/.test(code);
+    const playerIds = await Player.find({
+      academyId: filter.academyId,
+      ...(isCode
+        ? { playerCode: code }
+        : { $or: [
+          { fullName: new RegExp(escapeRegex(term), 'i') },
+          { playerCode: new RegExp(escapeRegex(term), 'i') },
+        ] }),
+    }).distinct('_id');
+    filter.playerId = { $in: playerIds };
+  }
+
   const [records, total] = await Promise.all([
     Attendance.find(filter)
       .populate('playerId', 'fullName playerCode image_url')
@@ -173,12 +230,42 @@ const getAttendance = async (req, res, next) => {
     Attendance.countDocuments(filter),
   ]);
 
-  return sendPaginated(res, {
-    data: records,
-    total,
-    page,
-    limit,
+  // ملخص يوم محدد: اللاعبون الذين لهم تمرين هذا اليوم (حسب أيام حضورهم) ولم
+  // يُسجَّل لهم حضور — يُرجَع مع الصفحة الأولى فقط ودون بحث.
+  let absentPlayers;
+  if (typeof filter.date === 'string' && page === 1 && !term) {
+    const [y, m, d] = filter.date.split('-').map(Number);
+    const weekday = WEEKDAY_AR[new Date(y, m - 1, d).getDay()];
+    const scheduledFilter = {
+      academyId: filter.academyId,
+      isActive: true,
+      ...Player.APPROVED_ONLY,
+      attendanceDays: weekday,
+    };
+    if (filter.sport) scheduledFilter.sport = filter.sport;
+    const [scheduled, presentIds] = await Promise.all([
+      Player.find(scheduledFilter).select('fullName playerCode sport image_url').sort({ fullName: 1 }),
+      Attendance.find({ academyId: filter.academyId, date: filter.date }).distinct('playerId'),
+    ]);
+    const present = new Set(presentIds.map(String));
+    absentPlayers = scheduled
+      .filter((p) => !present.has(p._id.toString()))
+      .map(playerSummary);
+  }
+
+  return res.status(200).json({
+    success: true,
     message: 'تم جلب سجل الحضور بنجاح',
+    data: records,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page * limit < total,
+      hasPrev: page > 1,
+      ...(absentPlayers ? { absentPlayers } : {}),
+    },
   });
 };
 

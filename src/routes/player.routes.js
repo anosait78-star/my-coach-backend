@@ -31,7 +31,8 @@ const {
 } = require('../controllers/publicProfile.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
-const { uploadPlayerImage } = require('../config/cloudinary');
+const { uploadPlayerImage, uploadJoinRequestFiles } = require('../config/cloudinary');
+const validateUpload = require('../middleware/validateUpload');
 
 const router = express.Router();
 
@@ -191,11 +192,14 @@ router.patch(
 );
 
 // POST /players
+// صورة اللاعب + إيصال الدفع (كلاهما إجباري — يفرضه createPlayer). نفس multer
+// طلبات الانضمام: يوزّع الحقلين على مجلّدي الصور والإيصالات. validateUpload
+// يحذف المرفوع إن سقط التحقّق.
 router.post(
   '/',
-  uploadPlayerImage.single('image'),
+  uploadJoinRequestFiles,
   createValidators,
-  validate,
+  validateUpload,
   createPlayer
 );
 

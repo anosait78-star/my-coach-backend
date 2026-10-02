@@ -234,12 +234,30 @@ const getPlayerById = async (req, res, next) => {
 };
 
 // ─── POST /players ───────────────────────────────────────────────────────────
+// multipart: 'image' (صورة اللاعب) و'receipt' (إيصال الدفع) — كلاهما إجباري
+// عند تسجيل اللاعب أول مرة. الملفات تُرفع إلى Cloudinary قبل وصولنا هنا، فأي
+// فشل بعدها يحذفها حتى لا تبقى صور يتيمة.
 const createPlayer = async (req, res, next) => {
+  const imageFile = req.files?.image?.[0];
+  const receiptFile = req.files?.receipt?.[0];
+  try {
+    if (!imageFile) throw new AppError('صورة اللاعب إجبارية', 422);
+    if (!receiptFile) throw new AppError('صورة إيصال الدفع إجبارية', 422);
+    return await createPlayerFromUploads(req, res, imageFile, receiptFile);
+  } catch (err) {
+    for (const f of [imageFile, receiptFile]) {
+      if (f?.filename) await deleteImage(f.filename).catch(() => {});
+    }
+    return next(err);
+  }
+};
+
+const createPlayerFromUploads = async (req, res, imageFile, receiptFile) => {
   // Determine academyId — super_admin يحدّدها، غيره مُقيَّد بأكاديميته.
   let academyId;
   if (req.user.role === 'super_admin') {
     academyId = req.body.academyId;
-    if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+    if (!academyId) throw new AppError('معرّف الأكاديمية مطلوب', 400);
   } else {
     academyId = req.user.academyId;
   }
@@ -273,7 +291,7 @@ const createPlayer = async (req, res, next) => {
   // Single-sport academy → assign its only sport automatically.
   // Multi-sport academy   → `sport` is required and must be one of academy.sports.
   const academy = await Academy.findById(academyId).select('sports');
-  if (!academy) return next(new AppError('الأكاديمية غير موجودة', 404));
+  if (!academy) throw new AppError('الأكاديمية غير موجودة', 404);
   const academySports = Array.isArray(academy.sports) && academy.sports.length > 0
     ? academy.sports
     : ['كرة سلة'];
@@ -282,9 +300,9 @@ const createPlayer = async (req, res, next) => {
     playerData.sport = academySports[0];
   } else {
     const chosen = sport ? String(sport).trim() : '';
-    if (!chosen) return next(new AppError('الرياضة مطلوبة', 422));
+    if (!chosen) throw new AppError('الرياضة مطلوبة', 422);
     if (!academySports.includes(chosen)) {
-      return next(new AppError('الرياضة المختارة غير متاحة في هذه الأكاديمية', 422));
+      throw new AppError('الرياضة المختارة غير متاحة في هذه الأكاديمية', 422);
     }
     playerData.sport = chosen;
   }
@@ -302,10 +320,10 @@ const createPlayer = async (req, res, next) => {
   const attendanceDays = parseArrayField(req.body.attendanceDays);
   if (attendanceDays !== undefined) playerData.attendanceDays = attendanceDays;
 
-  if (req.file) {
-    playerData.image_url = req.file.path;
-    playerData.image_public_id = req.file.filename;
-  }
+  playerData.image_url = imageFile.path;
+  playerData.image_public_id = imageFile.filename;
+  playerData.receipt_url = receiptFile.path;
+  playerData.receipt_public_id = receiptFile.filename;
 
   const player = await Player.create(playerData);
 

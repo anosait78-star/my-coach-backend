@@ -66,6 +66,18 @@ const updateBio = async (req, res, next) => {
   return sendSuccess(res, { data: shareInfo(player), message: 'تم حفظ النبذة' });
 };
 
+// ─── POST /player/share (بوابة اللاعب) ───────────────────────────────────────
+// اللاعب يشارك صفحته بنفسه: نفس الرابط العام الذي تديره الإدارة، يُنشأ إن
+// لم يوجد. لا يستطيع اللاعب إيقافه أو تجديده — هذا للإدارة فقط.
+const enableMyShare = async (req, res) => {
+  const player = await Player.findById(req.player._id).select('+shareToken');
+  if (!player.shareToken) {
+    player.shareToken = newToken();
+    await player.save();
+  }
+  return sendSuccess(res, { data: shareInfo(player), message: 'تم تجهيز رابط المشاركة' });
+};
+
 // ─── GET /public/players/:token (عام) ────────────────────────────────────────
 // عرض فقط: بدون اشتراكات أو تقييمات أو أرقام تواصل أو بيانات ولي الأمر.
 const getPublicProfile = async (req, res, next) => {
@@ -109,6 +121,7 @@ const getPublicProfile = async (req, res, next) => {
 };
 
 module.exports = {
+  enableMyShare,
   getShareInfo,
   enableShare,
   disableShare,

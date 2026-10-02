@@ -28,15 +28,17 @@ const kitBookingSchema = new mongoose.Schema(
     },
     playerName: { type: String, required: true, trim: true },
 
+    // الاسم والرقم على التيشرت أُلغيا من الحجز بطلب الإدارة. الحقلان باقيان
+    // اختياريين فقط حتى لا تفشل قراءة/حفظ الحجوزات القديمة التي تحملهما.
     shirtName: {
       type: String,
-      required: [true, 'الاسم على التيشرت مطلوب'],
+      default: '',
       trim: true,
       maxlength: [30, 'الاسم على التيشرت لا يمكن أن يتجاوز 30 حرف'],
     },
     shirtNumber: {
       type: Number,
-      required: [true, 'الرقم على التيشرت مطلوب'],
+      default: null,
       min: [0, 'الرقم غير صحيح'],
       max: [999, 'الرقم غير صحيح'],
     },

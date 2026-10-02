@@ -172,24 +172,12 @@ const getBookings = async (req, res, next) => {
 };
 
 // ─── PATCH /team-kit/bookings/:id/review ──────────────────────────────────────
-// المدير يعدّل البيانات (اسم/رقم/مقاس) وحالة الدفع، ثم يوافق أو يرفض.
+// المدير يعدّل المقاس وحالة الدفع، ثم يوافق أو يرفض.
 const reviewBooking = async (req, res, next) => {
   const booking = await KitBooking.findById(req.params.id);
   if (!booking) return next(new AppError('الحجز غير موجود', 404));
   assertAccess(req, booking);
 
-  if (req.body.shirtName !== undefined) {
-    const shirtName = String(req.body.shirtName).trim();
-    if (!shirtName) return next(new AppError('الاسم على التيشرت مطلوب', 400));
-    booking.shirtName = shirtName;
-  }
-  if (req.body.shirtNumber !== undefined) {
-    const n = Number(req.body.shirtNumber);
-    if (!Number.isFinite(n) || n < 0 || n > 999) {
-      return next(new AppError('الرقم على التيشرت غير صحيح', 400));
-    }
-    booking.shirtNumber = n;
-  }
   if (req.body.size !== undefined) {
     if (!KIT_SIZES.includes(req.body.size)) {
       return next(new AppError('المقاس غير صحيح', 400));
@@ -243,14 +231,6 @@ const createManagerBooking = async (req, res, next) => {
   const player = await Player.findOne({ _id: req.body.playerId, academyId });
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
 
-  const shirtName = String(req.body.shirtName || '').trim();
-  if (!shirtName) return next(new AppError('الاسم على التيشرت مطلوب', 400));
-
-  const shirtNumber = Number(req.body.shirtNumber);
-  if (!Number.isFinite(shirtNumber) || shirtNumber < 0 || shirtNumber > 999) {
-    return next(new AppError('الرقم على التيشرت غير صحيح', 400));
-  }
-
   const size = req.body.size;
   if (!kit.availableSizes.includes(size)) {
     return next(new AppError('المقاس غير متاح لهذا الطقم', 400));
@@ -273,8 +253,6 @@ const createManagerBooking = async (req, res, next) => {
     currency: (academy && academy.currency) || 'EGP',
     playerId: player._id,
     playerName: player.fullName,
-    shirtName,
-    shirtNumber,
     size,
     status: 'approved',
     paymentStatus,
@@ -330,14 +308,6 @@ const createPlayerBooking = async (req, res, next) => {
   const kit = await TeamKit.findOne({ academyId });
   if (!kit) return reject('لا يوجد طقم فريق متاح حالياً', 404);
 
-  const shirtName = String(req.body.shirtName || '').trim();
-  if (!shirtName) return reject('الاسم على التيشرت مطلوب');
-
-  const shirtNumber = Number(req.body.shirtNumber);
-  if (!Number.isFinite(shirtNumber) || shirtNumber < 0 || shirtNumber > 999) {
-    return reject('الرقم على التيشرت غير صحيح');
-  }
-
   const size = req.body.size;
   if (!kit.availableSizes.includes(size)) {
     return reject('المقاس غير متاح لهذا الطقم');
@@ -353,8 +323,6 @@ const createPlayerBooking = async (req, res, next) => {
     currency: (academy && academy.currency) || 'EGP',
     playerId: player._id,
     playerName: player.fullName,
-    shirtName,
-    shirtNumber,
     size,
     receipt_url: receiptFile.path,
     receipt_public_id: receiptFile.filename,

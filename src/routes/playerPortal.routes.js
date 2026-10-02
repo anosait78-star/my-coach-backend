@@ -20,6 +20,7 @@ const {
 const { getPlayerStore, createPlayerOrder } = require('../controllers/store.controller');
 const { getPlayerKit, createPlayerBooking } = require('../controllers/teamKit.controller');
 const { createPlayerRenewalRequest } = require('../controllers/renewalRequest.controller');
+const { enableMyShare } = require('../controllers/publicProfile.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage, uploadKitReceipt } = require('../config/cloudinary');
 const { KIT_SIZES } = require('../utils/kitSizes');
@@ -33,6 +34,9 @@ router.use(protectPlayer);
 
 // GET /api/v1/player/dashboard
 router.get('/dashboard', getPlayerDashboard);
+
+// ── رابط مشاركة صفحة اللاعب العامة (ينشئه إن لم يوجد) ──
+router.post('/share', enableMyShare);
 
 // ── صورة اللاعب الشخصية ──
 // يعيد استخدام نفس multer/Cloudinary الخاص بصور اللاعبين (حد 2MB مطبَّق هناك).
@@ -88,9 +92,6 @@ router.post(
   '/team-kit/bookings',
   uploadKitReceipt.single('receipt'),
   [
-    body('shirtName').notEmpty().withMessage('الاسم على التيشرت مطلوب')
-      .isLength({ max: 30 }).withMessage('الاسم على التيشرت لا يمكن أن يتجاوز 30 حرف'),
-    body('shirtNumber').isInt({ min: 0, max: 999 }).withMessage('الرقم على التيشرت غير صحيح'),
     body('size').isIn(KIT_SIZES).withMessage('المقاس غير صحيح'),
   ],
   validateUpload,

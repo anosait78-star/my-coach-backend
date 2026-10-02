@@ -44,9 +44,6 @@ router.post(
   manage,
   [
     body('playerId').isMongoId().withMessage('معرّف اللاعب غير صحيح'),
-    body('shirtName').notEmpty().withMessage('الاسم على التيشرت مطلوب')
-      .isLength({ max: 30 }).withMessage('الاسم على التيشرت لا يمكن أن يتجاوز 30 حرف'),
-    body('shirtNumber').isInt({ min: 0, max: 999 }).withMessage('الرقم على التيشرت غير صحيح'),
     body('size').isIn(KIT_SIZES).withMessage('المقاس غير صحيح'),
     body('paymentStatus').optional().isIn(['unpaid', 'paid']).withMessage('حالة الدفع غير صحيحة'),
     body('paidAmount').optional().isFloat({ min: 0 }).withMessage('المبلغ المدفوع غير صحيح'),
@@ -60,10 +57,6 @@ router.patch(
   manage,
   [
     param('id').isMongoId().withMessage('معرّف الحجز غير صحيح'),
-    body('shirtName').optional().isLength({ min: 1, max: 30 })
-      .withMessage('الاسم على التيشرت غير صحيح'),
-    body('shirtNumber').optional().isInt({ min: 0, max: 999 })
-      .withMessage('الرقم على التيشرت غير صحيح'),
     body('size').optional().isIn(KIT_SIZES).withMessage('المقاس غير صحيح'),
     body('paymentStatus').optional().isIn(['unpaid', 'paid']).withMessage('حالة الدفع غير صحيحة'),
     body('paidAmount').optional().isFloat({ min: 0 }).withMessage('المبلغ المدفوع غير صحيح'),
