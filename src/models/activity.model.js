@@ -47,7 +47,7 @@ const activitySchema = new mongoose.Schema(
         // المباريات (Matches)
         'CREATE_MATCH', 'UPDATE_MATCH', 'DELETE_MATCH',
         // طلبات الانضمام الذاتي (Join Requests)
-        'APPROVE_JOIN_REQUEST', 'REJECT_JOIN_REQUEST',
+        'APPROVE_JOIN_REQUEST', 'REJECT_JOIN_REQUEST', 'DELETE_JOIN_REQUEST',
         // فيديوهات بروفايل اللاعب (Player Videos)
         'CREATE_PLAYER_VIDEO', 'UPDATE_PLAYER_VIDEO', 'DELETE_PLAYER_VIDEO',
       ],

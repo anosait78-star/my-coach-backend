@@ -288,12 +288,15 @@ const getRevenueSummary = async (req, res, next) => {
           { $match: { type: 'RENEWAL' } },
           { $count: 'count' },
         ],
+        // آخر اشتراك لكل لاعب فقط — اللاعب الذي جدّد ليس منتهياً.
         activeCount: [
-          { $match: { endDate: { $gte: now } } },
+          { $group: { _id: '$playerId', lastEnd: { $max: '$endDate' } } },
+          { $match: { lastEnd: { $gte: now } } },
           { $count: 'count' },
         ],
         expiredCount: [
-          { $match: { endDate: { $lt: now } } },
+          { $group: { _id: '$playerId', lastEnd: { $max: '$endDate' } } },
+          { $match: { lastEnd: { $lt: now } } },
           { $count: 'count' },
         ],
       },

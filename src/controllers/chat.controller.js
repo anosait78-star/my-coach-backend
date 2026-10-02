@@ -1,6 +1,8 @@
+const mongoose = require('mongoose');
 const Conversation = require('../models/conversation.model');
 const Message = require('../models/message.model');
 const Player = require('../models/player.model');
+const Academy = require('../models/academy.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess } = require('../utils/apiResponse');
 const { notify } = require('../utils/notificationService');
@@ -25,18 +27,39 @@ const serializeMessage = (m) => ({
 // ─────────────────────────────── جهة الأكاديمية ───────────────────────────────
 
 // GET /api/v1/chat/conversations — قائمة محادثات الأكاديمية.
+// السوبر أدمن بلا أكاديمية ثابتة: يرى محادثات كل الفروع (أو فرعاً واحداً عبر
+// ?academyId=) مع اسم الفرع على كل محادثة. أي دور آخر مُقيَّد بأكاديميته.
 const getAcademyConversations = async (req, res, next) => {
-  const academyId = req.user.academyId;
-  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+  const isSuper = req.user.role === 'super_admin';
+  let filter;
+  if (isSuper) {
+    const scope = req.query.academyId;
+    if (scope && scope !== 'all' && !mongoose.Types.ObjectId.isValid(String(scope))) {
+      return next(new AppError('معرّف الأكاديمية غير صحيح', 400));
+    }
+    filter = scope && scope !== 'all' ? { academyId: scope } : {};
+  } else {
+    if (!req.user.academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
+    filter = { academyId: req.user.academyId };
+  }
 
-  const convos = await Conversation.find({ academyId })
+  const convos = await Conversation.find(filter)
     .sort({ lastMessageAt: -1, updated_at: -1 })
     .populate('playerId', 'fullName playerCode image_url');
+
+  let academyNames = new Map();
+  if (isSuper) {
+    const ids = [...new Set(convos.map((c) => c.academyId.toString()))];
+    const academies = await Academy.find({ _id: { $in: ids } }).select('name');
+    academyNames = new Map(academies.map((a) => [a._id.toString(), a.name]));
+  }
 
   const data = convos
     .filter((c) => c.playerId) // تجاهل لاعب محذوف
     .map((c) => ({
       _id: c._id.toString(),
+      academyId: c.academyId.toString(),
+      academyName: academyNames.get(c.academyId.toString()) || null,
       player: {
         _id: c.playerId._id.toString(),
         fullName: c.playerId.fullName,
@@ -51,17 +74,25 @@ const getAcademyConversations = async (req, res, next) => {
   return sendSuccess(res, { data, message: 'تم جلب المحادثات بنجاح' });
 };
 
-// GET /api/v1/chat/conversations/:playerId/messages — رسائل محادثة لاعب (جهة الأكاديمية).
-const getAcademyMessages = async (req, res, next) => {
-  const academyId = req.user.academyId;
-  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-
-  const { playerId } = req.params;
-  const player = await Player.findById(playerId).select('academyId fullName');
-  if (!player) return next(new AppError('اللاعب غير موجود', 404));
-  if (player.academyId.toString() !== academyId.toString()) {
-    return next(new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403));
+// يحمّل لاعب المحادثة. المحادثة دائماً على أكاديمية اللاعب نفسه؛ السوبر أدمن
+// يصل لأي لاعب، وأي دور آخر للاعبي أكاديميته فقط.
+const loadChatPlayer = async (req) => {
+  const player = await Player.findById(req.params.playerId).select('academyId fullName');
+  if (!player) throw new AppError('اللاعب غير موجود', 404);
+  if (req.user.role !== 'super_admin') {
+    if (!req.user.academyId) throw new AppError('معرّف الأكاديمية مطلوب', 400);
+    if (player.academyId.toString() !== req.user.academyId.toString()) {
+      throw new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403);
+    }
   }
+  return player;
+};
+
+// GET /api/v1/chat/conversations/:playerId/messages — رسائل محادثة لاعب (جهة الأكاديمية).
+const getAcademyMessages = async (req, res) => {
+  const { playerId } = req.params;
+  const player = await loadChatPlayer(req);
+  const academyId = player.academyId;
 
   const convo = await findOrCreateConversation(academyId, playerId);
   const messages = await Message.find({ conversationId: convo._id }).sort({ created_at: 1 }).limit(500);
@@ -88,18 +119,12 @@ const getAcademyMessages = async (req, res, next) => {
 
 // POST /api/v1/chat/conversations/:playerId/messages — رد الأكاديمية على لاعب.
 const academySendMessage = async (req, res, next) => {
-  const academyId = req.user.academyId;
-  if (!academyId) return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-
   const { playerId } = req.params;
   const text = String(req.body.text || '').trim();
   if (!text) return next(new AppError('نص الرسالة مطلوب', 400));
 
-  const player = await Player.findById(playerId).select('academyId fullName');
-  if (!player) return next(new AppError('اللاعب غير موجود', 404));
-  if (player.academyId.toString() !== academyId.toString()) {
-    return next(new AppError('هذا اللاعب لا ينتمي إلى أكاديميتك', 403));
-  }
+  const player = await loadChatPlayer(req);
+  const academyId = player.academyId;
 
   const convo = await findOrCreateConversation(academyId, playerId);
   const message = await Message.create({

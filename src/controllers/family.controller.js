@@ -26,6 +26,18 @@ const memberJson = (account, academyNames) => {
   };
 };
 
+// حقول اللاعب المطلوبة لعرض الحساب ولتحديد هل يظهر أصلاً.
+const PLAYER_FIELDS = 'fullName playerCode image_url isActive registrationStatus';
+
+// حساب يُعرض في قوائم العائلات ويُختار للدمج/التبديل: لاعبه موجود ونشط
+// ومعتمد. طلبات الانضمام المرفوضة/المعلّقة واللاعبون المحذوفون لا يظهرون.
+const isListedAccount = (account) => {
+  const p = account.playerId;
+  return Boolean(p) &&
+    p.isActive !== false &&
+    !['pending', 'rejected'].includes(p.registrationStatus);
+};
+
 const academyNameMap = async (accounts) => {
   const ids = [...new Set(accounts.map((a) => a.academyId?.toString()).filter(Boolean))];
   const academies = await Academy.find({ _id: { $in: ids } }).select('name');
@@ -39,9 +51,13 @@ const parseIds = (raw) =>
 
 // يتحقق أن كل الحسابات موجودة وليست في عائلة أخرى غير [allowFamilyId].
 const loadFreeAccounts = async (ids, allowFamilyId = null) => {
-  const accounts = await PlayerAccount.find({ _id: { $in: ids } });
+  const accounts = await PlayerAccount.find({ _id: { $in: ids } }).populate('playerId', PLAYER_FIELDS);
   if (accounts.length !== ids.length) {
     throw new AppError('بعض الحسابات المختارة غير موجودة', 404);
+  }
+  const hidden = accounts.find((a) => !isListedAccount(a));
+  if (hidden) {
+    throw new AppError(`الحساب ${hidden.username} مرفوض أو محذوف ولا يمكن إضافته لعائلة`, 422);
   }
   const taken = accounts.filter(
     (a) => a.familyId && a.familyId.toString() !== allowFamilyId?.toString()
@@ -53,9 +69,9 @@ const loadFreeAccounts = async (ids, allowFamilyId = null) => {
 };
 
 const familyJson = async (family) => {
-  const members = await PlayerAccount.find({ familyId: family._id })
-    .populate('playerId', 'fullName playerCode image_url')
-    .sort({ created_at: 1 });
+  const members = (await PlayerAccount.find({ familyId: family._id })
+    .populate('playerId', PLAYER_FIELDS)
+    .sort({ created_at: 1 })).filter(isListedAccount);
   const names = await academyNameMap(members);
   return {
     _id: family._id.toString(),
@@ -82,6 +98,8 @@ const searchCandidates = async (req, res) => {
   if (term) {
     const regex = new RegExp(escapeRegex(term), 'i');
     const players = await Player.find({
+      isActive: true,
+      ...Player.APPROVED_ONLY,
       $or: [{ fullName: regex }, { playerCode: regex }, { parentPhone: regex }],
     })
       .select('_id')
@@ -92,12 +110,12 @@ const searchCandidates = async (req, res) => {
   }
 
   const accounts = await PlayerAccount.find(accountFilter)
-    .populate('playerId', 'fullName playerCode image_url')
+    .populate('playerId', PLAYER_FIELDS)
     .limit(term ? 100 : 1000);
 
   const names = await academyNameMap(accounts);
   const data = accounts
-    .filter((a) => a.playerId)
+    .filter(isListedAccount)
     .map((a) => memberJson(a, names))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ar'));
 
@@ -191,4 +209,6 @@ module.exports = {
   deleteFamily,
   memberJson,
   academyNameMap,
+  isListedAccount,
+  PLAYER_FIELDS,
 };

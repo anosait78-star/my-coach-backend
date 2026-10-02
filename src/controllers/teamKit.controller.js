@@ -216,6 +216,12 @@ const reviewBooking = async (req, res, next) => {
     booking.status = status;
     booking.reviewedBy = req.user._id;
     booking.reviewedAt = new Date();
+    // الموافقة تعني أن إيصال الدفع راجعته الإدارة وقبلته: الحجز مدفوع،
+    // والمبلغ المدفوع = سعر الطقم إن لم يُحدَّد مبلغ آخر.
+    if (status === 'approved') {
+      booking.paymentStatus = 'paid';
+      if (!booking.paidAmount) booking.paidAmount = booking.price;
+    }
   }
 
   await booking.save();

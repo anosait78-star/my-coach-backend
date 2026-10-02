@@ -4,6 +4,11 @@ const Academy = require('../models/academy.model');
 const Group = require('../models/group.model');
 const PlayerAccount = require('../models/playerAccount.model');
 const Subscription = require('../models/subscription.model');
+const Family = require('../models/family.model');
+const Conversation = require('../models/conversation.model');
+const Message = require('../models/message.model');
+const Notification = require('../models/notification.model');
+const RenewalRequest = require('../models/renewalRequest.model');
 const AppError = require('../utils/AppError');
 const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
@@ -707,6 +712,58 @@ const rejectJoinRequest = async (req, res, next) => {
   return sendSuccess(res, { data: player, message: 'تم رفض طلب الانضمام' });
 };
 
+// ─── DELETE /players/:id/join-request ────────────────────────────────────────
+// حذف نهائي لطلب انضمام مرفوض: اللاعب + حساب دخوله + صوره + محادثته
+// وإشعاراته وطلبات تجديده، ويخرج من عائلته (وتُفكّ إن بقي فيها أقل من حسابين).
+// مقصور على المرفوض فقط — الطلب المرفوض لم يُعتمد قط، فلا اشتراكات ولا حضور له.
+const deleteRejectedJoinRequest = async (req, res, next) => {
+  const player = await Player.findById(req.params.id)
+    .select('+image_public_id +receipt_public_id');
+  if (!player) return next(new AppError('الطلب غير موجود', 404));
+  if (req.user.role !== 'super_admin' &&
+      player.academyId.toString() !== req.user.academyId?.toString()) {
+    return next(new AppError('ليس لديك صلاحية على هذا الطلب', 403));
+  }
+  if (player.registrationStatus !== 'rejected') {
+    return next(new AppError('يمكن حذف الطلبات المرفوضة فقط', 409));
+  }
+
+  const account = await PlayerAccount.findOne({ playerId: player._id });
+  if (account?.familyId) {
+    const familyId = account.familyId;
+    const remaining = await PlayerAccount.countDocuments({
+      familyId,
+      _id: { $ne: account._id },
+    });
+    if (remaining < 2) {
+      await PlayerAccount.updateMany({ familyId }, { $set: { familyId: null } });
+      await Family.deleteOne({ _id: familyId });
+    }
+  }
+
+  const conversations = await Conversation.find({ playerId: player._id }).select('_id');
+  const conversationIds = conversations.map((c) => c._id);
+  await Promise.all([
+    account ? PlayerAccount.deleteOne({ _id: account._id }) : null,
+    Message.deleteMany({ conversationId: { $in: conversationIds } }),
+    Conversation.deleteMany({ _id: { $in: conversationIds } }),
+    Notification.deleteMany({ recipientType: 'player', recipientId: player._id }),
+    RenewalRequest.deleteMany({ playerId: player._id }),
+  ]);
+  for (const publicId of [player.image_public_id, player.receipt_public_id]) {
+    if (publicId) await deleteImage(publicId).catch(() => {});
+  }
+  await Player.deleteOne({ _id: player._id });
+
+  logger.info(`Rejected join request deleted: ${player.playerCode} - ${player.fullName}`);
+  logActivity(req, {
+    actionType: 'DELETE_JOIN_REQUEST', entityType: 'PLAYER',
+    entityId: player._id, entityName: player.fullName, academyId: player.academyId,
+  });
+
+  return sendSuccess(res, { data: null, message: 'تم حذف الطلب نهائياً' });
+};
+
 module.exports = {
   getPlayers,
   getPlayersBirthdays,
@@ -721,4 +778,5 @@ module.exports = {
   listJoinRequests,
   approveJoinRequest,
   rejectJoinRequest,
+  deleteRejectedJoinRequest,
 };

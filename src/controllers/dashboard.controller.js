@@ -54,12 +54,16 @@ const getDashboardStats = async (req, res, next) => {
       { $match: match },
       {
         $facet: {
+          // نشط/منتهٍ حالة لاعب لا اشتراك: نعدّ آخر اشتراك لكل لاعب فقط، وإلا
+          // بقي كل اشتراك قديم لمن جدّد محسوباً ضمن المنتهي.
           activeSubscriptions: [
-            { $match: { endDate: { $gte: now } } },
+            { $group: { _id: '$playerId', lastEnd: { $max: '$endDate' } } },
+            { $match: { lastEnd: { $gte: now } } },
             { $count: 'count' },
           ],
           expiredSubscriptions: [
-            { $match: { endDate: { $lt: now } } },
+            { $group: { _id: '$playerId', lastEnd: { $max: '$endDate' } } },
+            { $match: { lastEnd: { $lt: now } } },
             { $count: 'count' },
           ],
           totalRevenue: [
@@ -369,8 +373,17 @@ const getSportStats = async (req, res, next) => {
       { $match: { 'player.sport': sport } },
       {
         $facet: {
-          active: [{ $match: { endDate: { $gte: now } } }, { $count: 'count' }],
-          expired: [{ $match: { endDate: { $lt: now } } }, { $count: 'count' }],
+          // آخر اشتراك لكل لاعب فقط (راجع getDashboardStats).
+          active: [
+            { $group: { _id: '$playerId', lastEnd: { $max: '$endDate' } } },
+            { $match: { lastEnd: { $gte: now } } },
+            { $count: 'count' },
+          ],
+          expired: [
+            { $group: { _id: '$playerId', lastEnd: { $max: '$endDate' } } },
+            { $match: { lastEnd: { $lt: now } } },
+            { $count: 'count' },
+          ],
           revenue: [{ $group: { _id: null, total: { $sum: '$amount' } } }],
         },
       },

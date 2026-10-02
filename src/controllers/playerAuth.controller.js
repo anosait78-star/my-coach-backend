@@ -5,7 +5,7 @@ const AppError = require('../utils/AppError');
 const { generatePlayerToken } = require('../utils/jwt');
 const { sendSuccess } = require('../utils/apiResponse');
 const logger = require('../utils/logger');
-const { memberJson, academyNameMap } = require('./family.controller');
+const { memberJson, academyNameMap, isListedAccount, PLAYER_FIELDS } = require('./family.controller');
 
 // يبني حمولة اللاعب الموحّدة للاستجابات.
 const buildPlayerPayload = (account, academyName) => {
@@ -88,12 +88,14 @@ const playerFamily = async (req, res) => {
     _id: { $ne: account._id },
     isActive: true,
   })
-    .populate('playerId', 'fullName playerCode image_url')
+    .populate('playerId', PLAYER_FIELDS)
     .sort({ created_at: 1 });
 
-  const names = await academyNameMap(others);
+  // المرفوض والمعلّق والمحذوف لا يظهر في قائمة التبديل.
+  const listed = others.filter(isListedAccount);
+  const names = await academyNameMap(listed);
   return sendSuccess(res, {
-    data: others.filter((a) => a.playerId).map((a) => memberJson(a, names)),
+    data: listed.map((a) => memberJson(a, names)),
   });
 };
 
@@ -122,7 +124,7 @@ const playerSwitch = async (req, res, next) => {
       message: 'الحساب المطلوب معطّل.',
     });
   }
-  if (!target.playerId || target.playerId.isActive === false) {
+  if (!isListedAccount(target)) {
     return next(new AppError('حساب اللاعب غير متاح', 403));
   }
 

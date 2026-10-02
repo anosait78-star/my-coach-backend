@@ -30,10 +30,13 @@ const getPlayerDashboard = async (req, res, next) => {
       Subscription.findOne({ playerId }).sort({ endDate: -1 }),
       Attendance.find({ playerId }).sort({ timestamp: -1 }).limit(60),
       Evaluation.find({ playerId }).sort({ evaluationDate: -1 }).limit(10),
+      // نفس فلتر مركز الإشعارات: إشعارات الرسائل لها عدّاد المحادثة وحده،
+      // وإلا ظهر رقم على الجرس بلا إشعارات في القائمة.
       Notification.countDocuments({
         recipientType: 'player',
         recipientId: playerId,
         isRead: false,
+        type: { $ne: 'NEW_MESSAGE' },
       }),
       Conversation.findOne({ academyId, playerId }),
       RenewalRequest.findOne({ playerId }).sort({ created_at: -1 }),

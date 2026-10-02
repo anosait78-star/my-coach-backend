@@ -13,6 +13,7 @@ const {
   listJoinRequests,
   approveJoinRequest,
   rejectJoinRequest,
+  deleteRejectedJoinRequest,
 } = require('../controllers/player.controller');
 const {
   getPlayerAccount,
@@ -28,7 +29,7 @@ const {
   disableShare,
   updateBio,
 } = require('../controllers/publicProfile.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 const { uploadPlayerImage } = require('../config/cloudinary');
 
@@ -230,6 +231,13 @@ router.patch(
   rejectJoinRequestValidators,
   validate,
   rejectJoinRequest
+);
+
+// DELETE /players/:id/join-request — حذف نهائي لطلب مرفوض (لا يملكه المشرف المحدود).
+router.delete(
+  '/:id/join-request',
+  restrictTo('super_admin', 'academy_admin'),
+  deleteRejectedJoinRequest
 );
 
 module.exports = router;
