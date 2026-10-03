@@ -20,12 +20,14 @@ const router = express.Router();
 router.use(protect);
 
 const manage = restrictTo('super_admin', 'academy_admin', 'admin');
+// المتجر موحّد لكل الفروع: المنتجات والإعدادات يديرها الحساب الرئيسي وحده.
+const ownerOnly = restrictTo('super_admin');
 
 // ── إعدادات المتجر (رقم واتساب) ──
 router.get('/settings', getStoreSettings);
 router.patch(
   '/settings',
-  manage,
+  ownerOnly,
   [
     body('storeWhatsApp').optional().isLength({ max: 20 })
       .withMessage('رقم واتساب المتجر لا يمكن أن يتجاوز 20 حرف'),
@@ -53,12 +55,12 @@ router.patch(
 router.get('/products', getProducts);
 
 // PATCH /store/products/reorder ← قبل /:id لتفادي التعارض
-router.patch('/products/reorder', manage, reorderProducts);
+router.patch('/products/reorder', ownerOnly, reorderProducts);
 
 // POST /store/products — رفع منتج (صورة + اسم + سعر + وصف)
 router.post(
   '/products',
-  manage,
+  ownerOnly,
   uploadStoreImage.single('image'),
   [
     body('name').notEmpty().withMessage('اسم المنتج مطلوب')
@@ -75,7 +77,7 @@ router.post(
 // PATCH /store/products/:id — تعديل الاسم/الوصف/السعر/التوفّر
 router.patch(
   '/products/:id',
-  manage,
+  ownerOnly,
   [
     param('id').isMongoId().withMessage('معرّف المنتج غير صحيح'),
     body('name').optional().isLength({ min: 1, max: 150 })
@@ -92,7 +94,7 @@ router.patch(
 // DELETE /store/products/:id
 router.delete(
   '/products/:id',
-  manage,
+  ownerOnly,
   [param('id').isMongoId().withMessage('معرّف المنتج غير صحيح')],
   validate,
   deleteProduct

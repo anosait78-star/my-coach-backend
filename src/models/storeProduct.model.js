@@ -1,13 +1,13 @@
 const mongoose = require('mongoose');
 
-// منتج في متجر أكاديمية. كل منتج مرتبط حتمياً بـ academyId، فلا يرى لاعبو
-// أكاديمية منتجات أكاديمية أخرى (يُفرَض في الـ controller — نفس نمط الألبوم).
+// منتج في المتجر الموحّد — مشترك بين كل الفروع. academyId قديم: الفرع الذي
+// أُضيف منه المنتج قبل توحيد المتجر (null للمنتجات الجديدة)، ولا يُفلتر به.
 const storeProductSchema = new mongoose.Schema(
   {
     academyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Academy',
-      required: [true, 'معرّف الأكاديمية مطلوب'],
+      default: null,
     },
     name: {
       type: String,
@@ -54,7 +54,7 @@ const storeProductSchema = new mongoose.Schema(
       virtuals: true,
       transform: function (doc, ret) {
         ret._id = ret._id.toString();
-        ret.academyId = ret.academyId?.toString();
+        ret.academyId = ret.academyId ? ret.academyId.toString() : null;
         delete ret.image_public_id;
         delete ret.__v;
         return ret;
@@ -64,6 +64,7 @@ const storeProductSchema = new mongoose.Schema(
 );
 
 storeProductSchema.index({ academyId: 1, order: 1, created_at: -1 });
+storeProductSchema.index({ order: 1, created_at: -1 });
 
 const StoreProduct = mongoose.model('StoreProduct', storeProductSchema);
 module.exports = StoreProduct;
