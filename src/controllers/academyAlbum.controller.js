@@ -4,6 +4,7 @@ const { sendSuccess, sendPaginated } = require('../utils/apiResponse');
 const { deleteImage } = require('../config/cloudinary');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notifyAcademyPlayers } = require('../utils/notificationService');
 
 // نفس نمط المجموعات/اللاعبين: super_admin وحده يمرّر academyId صراحةً،
 // وكل من عداه مُقيَّد حتمياً بأكاديميته.
@@ -79,6 +80,15 @@ const createAlbumImage = async (req, res, next) => {
   });
 
   logger.info(`Album image added: ${item._id} (academy ${academyId})`);
+  // إشعار لاعبي الفرع — رفع عدة صور متتالية (خلال ساعة) = إشعار واحد.
+  notifyAcademyPlayers({
+    academyIds: [academyId],
+    type: 'ALBUM_PHOTO_ADDED',
+    title: 'صور جديدة في ألبوم الأكاديمية 📸',
+    body: title,
+    meta: { albumId: item._id.toString() },
+    dedupeMinutes: 60,
+  });
   logActivity(req, {
     actionType: 'CREATE_ALBUM_IMAGE', entityType: 'ALBUM',
     entityId: item._id, entityName: title, academyId,

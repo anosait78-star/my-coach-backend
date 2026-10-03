@@ -87,6 +87,19 @@ const teamKitStorage = new CloudinaryStorage({
   },
 });
 
+// صورة العرض/الخصم — اختيارية.
+const offerImageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'basketball_academy/offers',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 1600, height: 1600, crop: 'limit' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  },
+});
+
 const staffPhotoStorage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -179,6 +192,12 @@ const uploadKitImage = multer({
   fileFilter,
 });
 
+const uploadOfferImage = multer({
+  storage: offerImageStorage,
+  limits: { fileSize: MAX_IMAGE_BYTES },
+  fileFilter,
+});
+
 const uploadKitReceipt = multer({
   storage: kitReceiptStorage,
   limits: { fileSize: MAX_IMAGE_BYTES },
@@ -207,6 +226,7 @@ module.exports = {
   uploadStoreImage,
   uploadKitImage,
   uploadKitReceipt,
+  uploadOfferImage,
   uploadJoinRequestFiles,
   deleteImage,
   MAX_IMAGE_BYTES,

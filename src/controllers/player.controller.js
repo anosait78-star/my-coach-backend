@@ -416,6 +416,17 @@ const updatePlayer = async (req, res, next) => {
 
   await player.save();
 
+  // صورة اللاعب الشخصية تغيّرت من الإدارة — نُعلمه داخل التطبيق.
+  if (req.file && !['pending', 'rejected'].includes(player.registrationStatus)) {
+    notify({
+      recipientType: 'player', recipientId: player._id, academyId: player.academyId,
+      type: 'PLAYER_PHOTO_UPDATED',
+      title: 'تم تحديث صورتك 📷',
+      body: 'أضافت الأكاديمية صورة جديدة لملفك الشخصي.',
+      meta: { image_url: player.image_url },
+    });
+  }
+
   logger.info(`Player updated: ${player.playerCode} - ${player.fullName}`);
   logActivity(req, {
     actionType: 'UPDATE_PLAYER', entityType: 'PLAYER',

@@ -21,6 +21,7 @@ const { getPlayerStore, createPlayerOrder } = require('../controllers/store.cont
 const { getPlayerKit, createPlayerBooking } = require('../controllers/teamKit.controller');
 const { createPlayerRenewalRequest } = require('../controllers/renewalRequest.controller');
 const { enableMyShare } = require('../controllers/publicProfile.controller');
+const { getPlayerOffers } = require('../controllers/offer.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage, uploadKitReceipt } = require('../config/cloudinary');
 const { KIT_SIZES } = require('../utils/kitSizes');
@@ -34,6 +35,9 @@ router.use(protectPlayer);
 
 // GET /api/v1/player/dashboard
 router.get('/dashboard', getPlayerDashboard);
+
+// ── العروض والخصومات السارية لفرع اللاعب ──
+router.get('/offers', getPlayerOffers);
 
 // ── رابط مشاركة صفحة اللاعب العامة (ينشئه إن لم يوجد) ──
 router.post('/share', enableMyShare);
