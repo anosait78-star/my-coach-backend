@@ -36,6 +36,11 @@ const notificationSchema = new mongoose.Schema(
         'PLAYER_VIDEO_ADDED',
         'PLAYER_VIDEO_COMMENT',
         'RENEWAL_REQUEST_REVIEWED',
+        // غياب متكرر (يُولَّد عند فتح اللاعب للتطبيق)، تغيير صورته، صور الألبوم، العروض.
+        'ABSENCE_ALERT',
+        'PLAYER_PHOTO_UPDATED',
+        'ALBUM_PHOTO_ADDED',
+        'OFFER_ADDED',
       ],
       required: true,
     },
@@ -61,6 +66,15 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ recipientType: 1, recipientId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ academyId: 1, createdAt: -1 });
+// الإشعارات التلقائية (utils/playerAlerts.js) تُنشأ مرة واحدة لكل مفتاح.
+notificationSchema.index(
+  { recipientId: 1, 'meta.alertKey': 1 },
+  {
+    name: 'player_alert_once',
+    unique: true,
+    partialFilterExpression: { 'meta.alertKey': { $exists: true } },
+  }
+);
 
 const Notification = mongoose.model('Notification', notificationSchema);
 module.exports = Notification;

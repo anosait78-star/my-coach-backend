@@ -6,6 +6,7 @@ const Conversation = require('../models/conversation.model');
 const RenewalRequest = require('../models/renewalRequest.model');
 const { sendSuccess } = require('../utils/apiResponse');
 const { subscriptionStats, todayFor } = require('./attendance.controller');
+const { ensurePlayerAlerts } = require('../utils/playerAlerts');
 
 const daysBetween = (future) => {
   if (!future) return 0;
@@ -18,6 +19,9 @@ const getPlayerDashboard = async (req, res, next) => {
   const player = req.player; // وثيقة اللاعب (من protectPlayer)
   const playerId = player._id;
   const academyId = player.academyId;
+
+  // تذكير الاشتراك والغياب المتكرر يُولَّدان عند الفتح، قبل عدّ غير المقروء.
+  await ensurePlayerAlerts(player, todayFor(req));
 
   const [
     latestSub,

@@ -4,6 +4,8 @@ const {
   getAcademyNotifications,
   markAcademyNotificationRead,
   markAllAcademyRead,
+  getAcademyAlerts,
+  updateAlertState,
 } = require('../controllers/notification.controller');
 const { protect } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
@@ -15,6 +17,12 @@ router.use(protect);
 
 // GET   /api/v1/notifications
 router.get('/', getAcademyNotifications);
+
+// GET  /api/v1/notifications/alerts — تنبيهات الإدارة المحسوبة (كل الفروع للسوبر أدمن)
+router.get('/alerts', getAcademyAlerts);
+
+// POST /api/v1/notifications/alerts/state — { ids[], read?, dismissed? }
+router.post('/alerts/state', updateAlertState);
 
 // PATCH /api/v1/notifications/read-all
 router.patch('/read-all', markAllAcademyRead);
