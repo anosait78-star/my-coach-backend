@@ -13,6 +13,10 @@ const escapeRegex = require('../utils/escapeRegex');
 // مطابقة تماماً للقيم المخزّنة في player.attendanceDays و SportsConstants.weekDays.
 const WEEKDAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
+const ATTENDANCE_KINDS = ['regular', 'pay_later', 'makeup', 'free'];
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 1000 * 60 * 60 * 24;
+
 // تطبيع كود اللاعب القادم من الـ QR: يقبل 'PLAYER:Y-0001' أو 'Y-0001'.
 // نُزيل المسافات أولاً ثم بادئة PLAYER: (غير حسّاسة لحالة الأحرف) ثم المسافات مجدداً.
 // إدخال الكود بالأرقام فقط (أو بحرف صغير): '123' أو 'y-123' → 'Y-0123'.
@@ -35,6 +39,16 @@ const serverTimeStr = () => {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 
+// "اليوم" بتوقيت جهاز المستخدم إن أرسله (localDate)، وإلا بتوقيت السيرفر —
+// السيرفر UTC والأكاديمية +2/+3، فالاعتماد على الجهاز يمنع انزياح اليوم ليلاً.
+const todayFor = (req) => {
+  const local = req.query?.localDate || req.body?.localDate;
+  return local && DATE_RE.test(local) ? local : serverDateStr();
+};
+
+// تواريخ الاشتراك تُخزَّن من 'YYYY-MM-DD' كمنتصف ليل UTC — نقرؤها بنفس الصيغة.
+const dateToStr = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+
 const playerSummary = (p) => ({
   id: p._id.toString(),
   fullName: p.fullName,
@@ -43,43 +57,163 @@ const playerSummary = (p) => ({
   image_url: p.image_url,
 });
 
-// حالة اشتراك اللاعب وحضوره هذا الشهر — تُعرض في نتيجة المسح مباشرة.
-// status: active | expiring (7 أيام أو أقل) | expired | none.
-const scanInfo = async (player, date) => {
-  const monthStart = date.slice(0, 8) + '01';
-  const [latestSub, presentThisMonth] = await Promise.all([
-    Subscription.findOne({ playerId: player._id }).sort({ endDate: -1 }).select('endDate'),
-    Attendance.countDocuments({ playerId: player._id, date: { $gte: monthStart, $lte: date } }),
-  ]);
-
-  let subscription = { status: 'none', endDate: null, daysRemaining: null };
-  if (latestSub) {
-    const ms = latestSub.endDate.getTime() - Date.now();
-    const daysRemaining = ms <= 0 ? 0 : Math.ceil(ms / (1000 * 60 * 60 * 24));
-    const status = ms < 0 ? 'expired' : daysRemaining <= 7 ? 'expiring' : 'active';
-    subscription = { status, endDate: latestSub.endDate, daysRemaining };
+// نطاق الأكاديمية — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
+const resolveAcademyId = (req) => {
+  if (req.user.role === 'super_admin') {
+    const id = req.query.academyId;
+    if (!id) throw new AppError('معرّف الأكاديمية مطلوب', 400);
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
+      throw new AppError('معرّف الأكاديمية غير صحيح', 400);
+    }
+    return id;
   }
+  return req.user.academyId;
+};
 
-  // الغياب = أيام تدريب اللاعب من أول الشهر حتى اليوم بلا حضور (نفس منطق التقرير).
-  const weekdayCounts = weekdayCountsInRange(monthStart, date);
-  const days = Array.isArray(player.attendanceDays) ? player.attendanceDays : [];
-  const expected = days.reduce((sum, d) => sum + (weekdayCounts[d] || 0), 0);
+const assertPlayerScope = (req, player, message) => {
+  if (
+    req.user.role !== 'super_admin' &&
+    player.academyId.toString() !== req.user.academyId?.toString()
+  ) {
+    throw new AppError(message, 403);
+  }
+};
+
+// ─── قاعدة الاحتساب الموحدة ──────────────────────────────────────────────────
+// S = { id, start, end, prevEnd } — نصوص 'YYYY-MM-DD'. prevEnd = نهاية الاشتراك
+// الذي قبله (أو null).
+//   regular   يُحتسب إن كان داخل [start, end].
+//   pay_later يُحتسب للتجديد الذي يلي فترة الانتهاء: date ≤ end و date > prevEnd
+//             (أو date ≥ start إن لم يوجد سابق).
+//   makeup    يُحتسب للاشتراك الذي سُجِّل عليه (subscriptionId).
+//   free      لا يُحتسب أبداً.
+const kindOf = (record) => record.kind || 'regular';
+
+const countsFor = (record, S) => {
+  const { date } = record;
+  switch (kindOf(record)) {
+    case 'regular':
+      return S.start <= date && date <= S.end;
+    case 'pay_later':
+      return date <= S.end && (S.prevEnd ? date > S.prevEnd : date >= S.start);
+    case 'makeup':
+      return Boolean(record.subscriptionId) && record.subscriptionId.toString() === S.id;
+    default:
+      return false;
+  }
+};
+
+// أقدم تاريخ قد يُحتاج لاشتراك S (يُضيّق استعلام السجلات).
+const lowerBoundOf = (S) => (S.prevEnd && S.prevEnd < S.start ? S.prevEnd : S.start);
+
+// نهاية آخر اشتراك للاعب قبل [sub].
+const prevEndOf = async (sub) => {
+  const prev = await Subscription.findOne({
+    playerId: sub.playerId,
+    _id: { $ne: sub._id },
+    endDate: { $lt: sub.endDate },
+  })
+    .sort({ endDate: -1 })
+    .select('endDate');
+  return prev ? dateToStr(prev.endDate) : null;
+};
+
+const periodOf = (sub, prevEnd) => ({
+  id: sub._id.toString(),
+  start: dateToStr(sub.startDate),
+  end: dateToStr(sub.endDate),
+  prevEnd,
+});
+
+// عدد كل يوم من أيام الأسبوع ضمن نطاق [start, end] شامل الطرفين.
+const weekdayCountsInRange = (startStr, endStr) => {
+  const counts = {};
+  for (const d of WEEKDAY_AR) counts[d] = 0;
+  const [sy, sm, sd] = startStr.split('-').map(Number);
+  const [ey, em, ed] = endStr.split('-').map(Number);
+  const cur = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
+  // حدّ أمان: لا نتجاوز ~400 تكرار (سنة وشهر)
+  let guard = 0;
+  while (cur <= end && guard < 400) {
+    counts[WEEKDAY_AR[cur.getDay()]] += 1;
+    cur.setDate(cur.getDate() + 1);
+    guard += 1;
+  }
+  return counts;
+};
+
+// أيام التدريب المتوقعة للاعب (حسب attendanceDays) في [start, end].
+const expectedInRange = (days, start, end) => {
+  if (!start || !end || end < start) return 0;
+  const counts = weekdayCountsInRange(start, end);
+  return (Array.isArray(days) ? days : []).reduce((sum, d) => sum + (counts[d] || 0), 0);
+};
+
+const daysRemainingOf = (endDate) => {
+  const ms = new Date(endDate).getTime() - Date.now();
+  return ms <= 0 ? 0 : Math.ceil(ms / DAY_MS);
+};
+
+// إحصائيات لاعب في اشتراك [sub] (نشط: حتى اليوم، منتهٍ: كامل الفترة).
+// daysRemaining إضافة لهذا التطبيق: نتيجة المسح تُظهر "قرب على الانتهاء".
+const subscriptionStats = async (player, sub, today) => {
+  if (!sub) {
+    return {
+      status: 'none', subscription: null,
+      present: 0, absent: 0, expected: 0, expectedTotal: 0, daysRemaining: null,
+    };
+  }
+  const S = periodOf(sub, await prevEndOf(sub));
+  const active = new Date(sub.endDate) >= new Date();
+  const countUntil = active && today < S.end ? today : S.end;
+
+  const records = await Attendance.find({
+    playerId: player._id,
+    $or: [
+      { date: { $gte: lowerBoundOf(S), $lte: S.end } },
+      { subscriptionId: sub._id },
+    ],
+  }).select('date kind subscriptionId');
+
+  const present = records.filter((r) => countsFor(r, S)).length;
+  const expected = expectedInRange(player.attendanceDays, S.start, countUntil);
+  const expectedTotal = expectedInRange(player.attendanceDays, S.start, S.end);
 
   return {
-    subscription,
-    monthAttendance: {
-      present: presentThisMonth,
-      absent: Math.max(expected - presentThisMonth, 0),
-      expected,
+    status: active ? 'active' : 'expired',
+    subscription: {
+      id: S.id,
+      type: sub.type,
+      startDate: sub.startDate,
+      endDate: sub.endDate,
     },
+    present,
+    absent: Math.max(expected - present, 0),
+    expected,
+    expectedTotal,
+    daysRemaining: active ? daysRemainingOf(sub.endDate) : 0,
   };
 };
 
+const latestSubscriptionOf = (playerId) =>
+  Subscription.findOne({ playerId }).sort({ endDate: -1 });
+
+const KIND_SUFFIX = {
+  pay_later: ' (الدفع لاحقاً)',
+  makeup: ' (تعويض غياب سابق)',
+  free: ' (حصة مجانية)',
+};
+
 // ─── POST /attendance ─────────────────────────────────────────────────────────
-// مسح واحد = طلب واحد: بحث عن اللاعب + منع التكرار + إنشاء السجل + إرجاع بيانات اللاعب.
+// مسح واحد = طلب واحد: بحث عن اللاعب + منع التكرار + إنشاء السجل + الإحصائيات.
+// اشتراك منتهٍ بلا [mode] ⇒ لا تسجيل؛ الواجهة تعرض الخيارات ثم تعيد الإرسال مع
+// mode = pay_later | makeup | free.
 const recordAttendance = async (req, res, next) => {
   const { code, playerId, localDate, localTime } = req.body;
-  logger.info(`[ATTENDANCE] record request: code="${code ?? ''}" playerId="${playerId ?? ''}"`);
+  // allowExpired قديم ≡ pay_later.
+  const mode = req.body.mode || (req.body.allowExpired === true ? 'pay_later' : null);
+  logger.info(`[ATTENDANCE] record request: code="${code ?? ''}" playerId="${playerId ?? ''}" mode="${mode ?? ''}"`);
 
   // 1) العثور على اللاعب (بالكود من الـ QR أو بالمعرّف)
   let player;
@@ -89,7 +223,6 @@ const recordAttendance = async (req, res, next) => {
   } else {
     const normalized = normalizeCode(code);
     searchKey = normalized;
-    logger.info(`[ATTENDANCE] normalized playerCode for search: "${normalized}"`);
     if (!normalized) return next(new AppError('كود اللاعب مطلوب', 400));
     player = await Player.findOne({ playerCode: normalized });
   }
@@ -98,26 +231,59 @@ const recordAttendance = async (req, res, next) => {
     logger.warn(`[ATTENDANCE] player NOT FOUND for "${searchKey}"`);
     return next(new AppError('اللاعب غير موجود', 404));
   }
-  logger.info(`[ATTENDANCE] player found: ${player.playerCode} - ${player.fullName}`);
 
   // طلب انضمام لم تتم الموافقة عليه بعد ليس لاعباً في الأكاديمية، فلا يُسجَّل له حضور.
   if (['pending', 'rejected'].includes(player.registrationStatus)) {
-    logger.warn(`[ATTENDANCE] blocked — registrationStatus=${player.registrationStatus} for ${player.playerCode}`);
     return next(new AppError('لم تتم الموافقة على طلب انضمام هذا اللاعب بعد', 403));
   }
 
   // 2) فحص صلاحية النطاق
-  if (
-    req.user.role !== 'super_admin' &&
-    player.academyId.toString() !== req.user.academyId?.toString()
-  ) {
-    return next(new AppError('ليس لديك صلاحية لتسجيل حضور هذا اللاعب', 403));
-  }
+  assertPlayerScope(req, player, 'ليس لديك صلاحية لتسجيل حضور هذا اللاعب');
 
-  const date = (localDate && /^\d{4}-\d{2}-\d{2}$/.test(localDate)) ? localDate : serverDateStr();
+  const date = (localDate && DATE_RE.test(localDate)) ? localDate : serverDateStr();
   const time = (localTime && /^\d{2}:\d{2}$/.test(localTime)) ? localTime : serverTimeStr();
 
-  // 3) محاولة الإنشاء — الفهرس الفريد (playerId, date) هو حارس منع التكرار.
+  // 3) آخر اشتراك
+  const latest = await latestSubscriptionOf(player._id);
+  const subscriptionExpired = !latest || latest.endDate < new Date();
+
+  const alreadyTodayResponse = async () => sendSuccess(res, {
+    data: {
+      recorded: false,
+      alreadyToday: true,
+      player: playerSummary(player),
+      stats: await subscriptionStats(player, latest, date),
+    },
+    message: 'تم تسجيل حضور هذا اللاعب مسبقاً اليوم',
+  });
+
+  // 4) منتهٍ بلا اختيار ⇒ لا تسجيل (إلا لو سُجِّل اليوم أصلاً).
+  if (subscriptionExpired && !mode) {
+    if (await Attendance.exists({ playerId: player._id, date })) {
+      return alreadyTodayResponse();
+    }
+    return sendSuccess(res, {
+      data: {
+        recorded: false,
+        alreadyToday: false,
+        subscriptionExpired: true,
+        player: playerSummary(player),
+        stats: await subscriptionStats(player, latest, date),
+      },
+      message: 'اشتراك اللاعب منتهي',
+    });
+  }
+
+  // mode يُتجاهل لو الاشتراك نشط.
+  const kind = subscriptionExpired ? mode : 'regular';
+  if (!ATTENDANCE_KINDS.includes(kind)) {
+    return next(new AppError('نوع الحضور غير صحيح', 400));
+  }
+  if (kind === 'makeup' && !latest) {
+    return next(new AppError('لا يوجد اشتراك سابق لتعويض الغياب فيه', 400));
+  }
+
+  // 5) الإنشاء — الفهرس الفريد (playerId, date) هو حارس منع التكرار.
   try {
     const attendance = await Attendance.create({
       playerId: player._id,
@@ -126,69 +292,51 @@ const recordAttendance = async (req, res, next) => {
       date,
       time,
       status: 'present',
+      kind,
+      subscriptionId: kind === 'makeup' ? latest._id : null,
     });
 
-    logger.info(`Attendance recorded: ${player.playerCode} @ ${date} ${time}`);
+    logger.info(`Attendance recorded: ${player.playerCode} @ ${date} ${time} (${kind})`);
     logActivity(req, {
       actionType: 'RECORD_ATTENDANCE', entityType: 'ATTENDANCE',
       entityId: player._id, entityName: player.fullName, academyId: player.academyId,
     });
-    // إشعار اللاعب بتسجيل حضوره (fire-and-forget).
     notify({
       recipientType: 'player', recipientId: player._id, academyId: player.academyId,
       type: 'ATTENDANCE_PRESENT', title: 'تم تسجيل حضورك',
-      body: `تم تسجيل حضورك بتاريخ ${date} الساعة ${time}`,
-      meta: { date, time },
+      body: `تم تسجيل حضورك بتاريخ ${date} الساعة ${time}${KIND_SUFFIX[kind] || ''}`,
+      meta: { date, time, kind },
     });
     return sendSuccess(res, {
       data: {
         recorded: true,
         alreadyToday: false,
+        kind,
         player: playerSummary(player),
         attendance,
-        ...(await scanInfo(player, date)),
+        stats: await subscriptionStats(player, latest, date),
       },
       message: 'تم تسجيل الحضور بنجاح',
       statusCode: 201,
     });
   } catch (err) {
     // مفتاح مكرّر ⇒ اللاعب سُجّل مسبقاً في نفس اليوم
-    if (err && err.code === 11000) {
-      return sendSuccess(res, {
-        data: {
-          recorded: false,
-          alreadyToday: true,
-          player: playerSummary(player),
-          ...(await scanInfo(player, date)),
-        },
-        message: 'تم تسجيل حضور هذا اللاعب مسبقاً اليوم',
-      });
-    }
+    if (err && err.code === 11000) return alreadyTodayResponse();
     return next(err);
   }
 };
 
 // ─── GET /attendance ──────────────────────────────────────────────────────────
 // سجل الحضور — مُصفحَّن مع فلاتر (التاريخ، الرياضة، اللاعب). استعلام واحد + populate.
-const getAttendance = async (req, res, next) => {
+const getAttendance = async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 30));
   const skip = (page - 1) * limit;
 
-  const filter = {};
-
-  // نطاق الأكاديمية إلزامي — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
-  if (req.user.role === 'super_admin') {
-    if (!req.query.academyId) {
-      return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-    }
-    filter.academyId = req.query.academyId;
-  } else {
-    filter.academyId = req.user.academyId;
-  }
+  const filter = { academyId: resolveAcademyId(req) };
 
   // فلتر يوم محدّد، أو نطاق تاريخي (مقارنة نصية صالحة لصيغة YYYY-MM-DD)
-  if (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) {
+  if (req.query.date && DATE_RE.test(req.query.date)) {
     filter.date = req.query.date;
   } else if (req.query.startDate || req.query.endDate) {
     filter.date = {};
@@ -203,24 +351,6 @@ const getAttendance = async (req, res, next) => {
     filter.playerId = req.query.playerId;
   }
 
-  // بحث باسم اللاعب أو كوده في كل السجل (لا في الصفحة المحمّلة فقط).
-  // الأرقام وحدها تعني الكود: '123' = Y-0123 بالضبط.
-  const term = String(req.query.search || '').trim();
-  if (term) {
-    const code = normalizeCode(term);
-    const isCode = /^Y-\d+$/.test(code);
-    const playerIds = await Player.find({
-      academyId: filter.academyId,
-      ...(isCode
-        ? { playerCode: code }
-        : { $or: [
-          { fullName: new RegExp(escapeRegex(term), 'i') },
-          { playerCode: new RegExp(escapeRegex(term), 'i') },
-        ] }),
-    }).distinct('_id');
-    filter.playerId = { $in: playerIds };
-  }
-
   const [records, total] = await Promise.all([
     Attendance.find(filter)
       .populate('playerId', 'fullName playerCode image_url')
@@ -231,9 +361,9 @@ const getAttendance = async (req, res, next) => {
   ]);
 
   // ملخص يوم محدد: اللاعبون الذين لهم تمرين هذا اليوم (حسب أيام حضورهم) ولم
-  // يُسجَّل لهم حضور — يُرجَع مع الصفحة الأولى فقط ودون بحث.
+  // يُسجَّل لهم حضور — مع الصفحة الأولى فقط، وليس عند تصفّح لاعب واحد.
   let absentPlayers;
-  if (typeof filter.date === 'string' && page === 1 && !term) {
+  if (typeof filter.date === 'string' && page === 1 && !filter.playerId) {
     const [y, m, d] = filter.date.split('-').map(Number);
     const weekday = WEEKDAY_AR[new Date(y, m - 1, d).getDay()];
     const scheduledFilter = {
@@ -269,90 +399,119 @@ const getAttendance = async (req, res, next) => {
   });
 };
 
-// عدد كل يوم من أيام الأسبوع ضمن نطاق [start, end] شامل الطرفين.
-const weekdayCountsInRange = (startStr, endStr) => {
-  const counts = {};
-  for (const d of WEEKDAY_AR) counts[d] = 0;
-  const [sy, sm, sd] = startStr.split('-').map(Number);
-  const [ey, em, ed] = endStr.split('-').map(Number);
-  const cur = new Date(sy, sm - 1, sd);
-  const end = new Date(ey, em - 1, ed);
-  // حدّ أمان: لا نتجاوز ~370 تكرار (سنة واحدة)
-  let guard = 0;
-  while (cur <= end && guard < 400) {
-    counts[WEEKDAY_AR[cur.getDay()]] += 1;
-    cur.setDate(cur.getDate() + 1);
-    guard += 1;
-  }
-  return counts;
-};
-
 // ─── GET /attendance/report ───────────────────────────────────────────────────
-// تقرير الحضور/الغياب — استعلامان فقط (لاعبون + تجميع الحضور) ثم حساب في الذاكرة.
-const getAttendanceReport = async (req, res, next) => {
-  // نطاق الأكاديمية — super_admin يمرّر academyId، وغيره مُقيَّد بأكاديميته.
-  let academyId;
-  if (req.user.role === 'super_admin') {
-    if (!req.query.academyId) {
-      return next(new AppError('معرّف الأكاديمية مطلوب', 400));
-    }
-    academyId = req.query.academyId;
-  } else {
-    academyId = req.user.academyId;
-  }
-
-  // الفترة — افتراضياً الشهر الحالي إن لم تُرسل
-  const today = serverDateStr();
-  const firstOfMonth = today.slice(0, 8) + '01';
-  const startDate = (req.query.startDate && /^\d{4}-\d{2}-\d{2}$/.test(req.query.startDate))
-    ? req.query.startDate : firstOfMonth;
-  const endDate = (req.query.endDate && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endDate))
-    ? req.query.endDate : today;
-
+// تقرير الحضور والغياب على أساس اشتراك كل لاعب (من بدايته حتى اليوم) — لا على
+// الشهر الميلادي. أربعة استعلامات فقط ثم حساب في الذاكرة.
+// ?subscription=active (نشطون فقط) | أي قيمة أخرى = الكل (المنتهي يظهر بلا أرقام).
+const getAttendanceReport = async (req, res) => {
+  const academyId = resolveAcademyId(req);
+  const academyObjectId = new mongoose.Types.ObjectId(String(academyId));
   const sport = (req.query.sport && req.query.sport.trim().length > 0)
     ? req.query.sport.trim() : null;
+  const subscriptionFilter = req.query.subscription === 'active' ? 'active' : 'all';
+  const today = todayFor(req);
+  const now = new Date();
 
-  // (أ) لاعبو الأكاديمية النشطون
-  const playerFilter = { academyId, isActive: true, ...Player.APPROVED_ONLY };
+  // (أ) الاشتراكات النشطة — أحدثها لكل لاعب.
+  const activeSubs = await Subscription.find({ academyId: academyObjectId, endDate: { $gte: now } })
+    .sort({ endDate: -1 });
+  const activeSubMap = new Map();
+  for (const s of activeSubs) {
+    const key = s.playerId.toString();
+    if (!activeSubMap.has(key)) activeSubMap.set(key, s);
+  }
+
+  // (ب) اللاعبون.
+  const playerFilter = { academyId: academyObjectId, isActive: true, ...Player.APPROVED_ONLY };
   if (sport) playerFilter.sport = sport;
+  if (subscriptionFilter === 'active') {
+    playerFilter._id = { $in: [...activeSubMap.keys()] };
+  }
   const players = await Player.find(playerFilter)
-    .select('fullName playerCode sport attendanceDays');
+    .select('fullName playerCode sport attendanceDays')
+    .sort({ fullName: 1 });
 
-  // (ب) تجميع الحضور خلال الفترة لكل لاعب
-  const matchStage = {
-    academyId: new mongoose.Types.ObjectId(String(academyId)),
-    date: { $gte: startDate, $lte: endDate },
-  };
-  if (sport) matchStage.sport = sport;
-  const agg = await Attendance.aggregate([
-    { $match: matchStage },
-    { $group: { _id: '$playerId', present: { $sum: 1 } } },
-  ]);
-  const presentMap = {};
-  for (const row of agg) presentMap[row._id.toString()] = row.present;
+  const activePlayers = players.filter((p) => activeSubMap.has(p._id.toString()));
+  const activeIds = activePlayers.map((p) => p._id);
 
-  // حساب المتوقع/الغياب/نسبة الالتزام في الذاكرة
-  const weekdayCounts = weekdayCountsInRange(startDate, endDate);
+  // (ج) نهاية الاشتراك السابق لكل لاعب نشط ⇒ فترة الاحتساب.
+  const allSubs = activeIds.length
+    ? await Subscription.find({ playerId: { $in: activeIds } }).select('playerId endDate')
+    : [];
+  const periods = new Map();
+  let minStart = null;
+  for (const p of activePlayers) {
+    const key = p._id.toString();
+    const sub = activeSubMap.get(key);
+    let prevEnd = null;
+    for (const s of allSubs) {
+      if (s.playerId.toString() !== key || s._id.equals(sub._id)) continue;
+      if (s.endDate < sub.endDate) {
+        const end = dateToStr(s.endDate);
+        if (!prevEnd || end > prevEnd) prevEnd = end;
+      }
+    }
+    const S = periodOf(sub, prevEnd);
+    periods.set(key, S);
+    const lb = lowerBoundOf(S);
+    if (!minStart || lb < minStart) minStart = lb;
+  }
+
+  // (د) سجلات الحضور مرة واحدة ثم تجميع لكل لاعب.
+  const records = activeIds.length
+    ? await Attendance.find({
+      academyId: academyObjectId,
+      playerId: { $in: activeIds },
+      date: { $gte: minStart },
+    }).select('playerId date kind subscriptionId')
+    : [];
+  const recordsByPlayer = new Map();
+  for (const r of records) {
+    const key = r.playerId.toString();
+    if (!recordsByPlayer.has(key)) recordsByPlayer.set(key, []);
+    recordsByPlayer.get(key).push(r);
+  }
+
   let totalPresent = 0;
   let totalAbsent = 0;
-
   const rows = players.map((p) => {
-    const days = Array.isArray(p.attendanceDays) ? p.attendanceDays : [];
-    const expected = days.reduce((sum, d) => sum + (weekdayCounts[d] || 0), 0);
-    const present = presentMap[p._id.toString()] || 0;
+    const key = p._id.toString();
+    const base = {
+      playerId: key,
+      playerCode: p.playerCode,
+      fullName: p.fullName,
+      sport: p.sport,
+      attendanceDays: p.attendanceDays || [],
+    };
+    const S = periods.get(key);
+    if (!S) {
+      return {
+        ...base,
+        subscriptionStatus: 'expired',
+        subscriptionStart: null,
+        subscriptionEnd: null,
+        expected: 0, expectedTotal: 0, expectedThisMonth: 0,
+        present: 0, absent: 0, rate: 0,
+      };
+    }
+    const countUntil = today < S.end ? today : S.end;
+    const present = (recordsByPlayer.get(key) || []).filter((r) => countsFor(r, S)).length;
+    const expected = expectedInRange(p.attendanceDays, S.start, countUntil);
+    const expectedTotal = expectedInRange(p.attendanceDays, S.start, S.end);
     const absent = Math.max(expected - present, 0);
     const rate = expected > 0
-      ? Math.round((present / expected) * 100)
+      ? Math.min(100, Math.round((present / expected) * 100))
       : (present > 0 ? 100 : 0);
     totalPresent += present;
     totalAbsent += absent;
     return {
-      playerId: p._id.toString(),
-      playerCode: p.playerCode,
-      fullName: p.fullName,
-      sport: p.sport,
-      attendanceDays: days,
+      ...base,
+      subscriptionStatus: 'active',
+      subscriptionStart: S.start,
+      subscriptionEnd: S.end,
       expected,
+      expectedTotal,
+      expectedThisMonth: expectedTotal, // توافق رجعي مع واجهات قديمة
       present,
       absent,
       rate,
@@ -361,10 +520,13 @@ const getAttendanceReport = async (req, res, next) => {
 
   return sendSuccess(res, {
     data: {
-      startDate,
-      endDate,
+      basis: 'subscription',
+      startDate: minStart || today,
+      endDate: today,
       sport,
+      subscription: subscriptionFilter,
       playersCount: rows.length,
+      activeCount: activePlayers.length,
       totalPresent,
       totalAbsent,
       rows,
@@ -373,8 +535,82 @@ const getAttendanceReport = async (req, res, next) => {
   });
 };
 
+// ─── GET /attendance/players?search=&sport= ──────────────────────────────────
+// بحث لاعب لسجل الحضور (اسم أو كود). الأرقام وحدها تطابق الكود بالضبط أولاً.
+const searchAttendancePlayers = async (req, res) => {
+  const term = String(req.query.search || '').trim();
+  if (!term) return sendSuccess(res, { data: [], message: 'لا يوجد بحث' });
+
+  const filter = {
+    academyId: resolveAcademyId(req),
+    isActive: true,
+    ...Player.APPROVED_ONLY,
+  };
+  if (req.query.sport && req.query.sport.trim().length > 0) {
+    filter.sport = req.query.sport.trim();
+  }
+  const regex = new RegExp(escapeRegex(term), 'i');
+  const code = normalizeCode(term);
+  filter.$or = [{ fullName: regex }, { playerCode: regex }, { playerCode: code }];
+
+  const players = await Player.find(filter)
+    .select('fullName playerCode sport image_url')
+    .sort({ fullName: 1 })
+    .limit(30);
+
+  // المطابقة التامة للكود أولاً.
+  players.sort((a, b) => (b.playerCode === code) - (a.playerCode === code));
+  return sendSuccess(res, { data: players.map(playerSummary), message: 'تم البحث بنجاح' });
+};
+
+// ─── GET /attendance/player/:id/summary ──────────────────────────────────────
+// ملخص حضور لاعب في اشتراكه الأخير (نشط: منذ بدايته، منتهٍ: الاشتراك السابق).
+const getPlayerAttendanceSummary = async (req, res, next) => {
+  const player = await Player.findById(req.params.id)
+    .select('fullName playerCode sport image_url academyId attendanceDays');
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  assertPlayerScope(req, player, 'ليس لديك صلاحية للوصول إلى هذا اللاعب');
+
+  const latest = await latestSubscriptionOf(player._id);
+  return sendSuccess(res, {
+    data: {
+      player: playerSummary(player),
+      stats: await subscriptionStats(player, latest, todayFor(req)),
+    },
+    message: 'تم جلب ملخص الحضور بنجاح',
+  });
+};
+
+// ─── DELETE /attendance/:id ──────────────────────────────────────────────────
+const deleteAttendance = async (req, res, next) => {
+  const record = await Attendance.findById(req.params.id).populate('playerId', 'fullName');
+  if (!record) return next(new AppError('سجل الحضور غير موجود', 404));
+  if (
+    req.user.role !== 'super_admin' &&
+    record.academyId.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية لحذف هذا السجل', 403));
+  }
+
+  await record.deleteOne();
+
+  logger.info(`Attendance deleted: ${record._id} (${record.date})`);
+  logActivity(req, {
+    actionType: 'DELETE_ATTENDANCE', entityType: 'ATTENDANCE',
+    entityId: record._id, entityName: record.playerId?.fullName || '',
+    academyId: record.academyId,
+  });
+  return sendSuccess(res, { message: 'تم حذف سجل الحضور' });
+};
+
 module.exports = {
   recordAttendance,
   getAttendance,
   getAttendanceReport,
+  searchAttendancePlayers,
+  getPlayerAttendanceSummary,
+  deleteAttendance,
+  // مُصدَّرة لبوابة اللاعب (عدد الحضور على أساس الاشتراك).
+  subscriptionStats,
+  todayFor,
 };

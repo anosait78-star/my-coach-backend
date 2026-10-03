@@ -5,6 +5,7 @@ const Notification = require('../models/notification.model');
 const Conversation = require('../models/conversation.model');
 const RenewalRequest = require('../models/renewalRequest.model');
 const { sendSuccess } = require('../utils/apiResponse');
+const { subscriptionStats, todayFor } = require('./attendance.controller');
 
 const daysBetween = (future) => {
   if (!future) return 0;
@@ -55,6 +56,9 @@ const getPlayerDashboard = async (req, res, next) => {
         }
       : null;
 
+  // حضور/غياب اللاعب في اشتراكه الأخير (نفس حساب شاشة الإدارة).
+  const attStats = await subscriptionStats(player, latestSub, todayFor(req));
+
   const subscription = latestSub
     ? {
         _id: latestSub._id.toString(),
@@ -88,7 +92,9 @@ const getPlayerDashboard = async (req, res, next) => {
         sport: player.sport || null,
       },
       attendance: {
-        presentCount: attendanceRecords.length,
+        // على أساس الاشتراك (نفس قاعدة الحضور الإدارية) — لا آخر 60 سجلاً.
+        presentCount: latestSub ? attStats.present : attendanceRecords.length,
+        absentCount: latestSub ? attStats.absent : 0,
         recent: attendanceRecords.slice(0, 30).map((a) => ({
           date: a.date,
           time: a.time,

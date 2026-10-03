@@ -1,18 +1,20 @@
 const express = require('express');
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const {
   recordAttendance,
   getAttendance,
   getAttendanceReport,
+  searchAttendancePlayers,
+  getPlayerAttendanceSummary,
+  deleteAttendance,
 } = require('../controllers/attendance.controller');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(protect);
-// حارس اشتراك المنصة: يمنع الكتابة عند انتهاء/تعليق الاشتراك (لا يمسّ GET).
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
@@ -29,17 +31,39 @@ const recordValidators = [
   body('localTime')
     .optional({ checkFalsy: true })
     .matches(/^\d{2}:\d{2}$/).withMessage('صيغة الوقت غير صحيحة'),
+  // نوع الحضور للاعب منتهي الاشتراك (يُتجاهل لو الاشتراك نشط).
+  body('mode')
+    .optional({ checkFalsy: true })
+    .isIn(['pay_later', 'makeup', 'free']).withMessage('نوع الحضور غير صحيح'),
 ];
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+const idParam = (name) => [param(name).isMongoId().withMessage('المعرّف غير صحيح')];
 
-// GET /attendance/report   ← MUST be before any '/:id' style route
+// ─── Routes ──────────────────────────────────────────────────────────────────
+// الترتيب مهم: /report و /players و /player/:id/summary قبل أي مسار '/:id'.
+
+// GET /attendance/report
 router.get('/report', getAttendanceReport);
+
+// GET /attendance/players?search=&sport=
+router.get('/players', searchAttendancePlayers);
+
+// GET /attendance/player/:id/summary
+router.get('/player/:id/summary', idParam('id'), validate, getPlayerAttendanceSummary);
 
 // GET /attendance
 router.get('/', getAttendance);
 
 // POST /attendance
 router.post('/', recordValidators, validate, recordAttendance);
+
+// DELETE /attendance/:id — حذف سجل حضور (الإدارة فقط)
+router.delete(
+  '/:id',
+  restrictTo('super_admin', 'academy_admin', 'admin'),
+  idParam('id'),
+  validate,
+  deleteAttendance
+);
 
 module.exports = router;
