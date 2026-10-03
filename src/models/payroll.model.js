@@ -25,10 +25,16 @@ const payrollSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    // سعر التمرينة وقت توليد المرتب (المرتب = سعر التمرينة × أيام الحضور).
+    sessionRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // النظام القديم — اختياري للسجلات السابقة فقط.
     monthlyAttendanceTarget: {
       type: Number,
-      required: true,
-      min: 1,
+      default: null,
     },
     presentCount: {
       type: Number,
@@ -42,12 +48,12 @@ const payrollSchema = new mongoose.Schema(
     },
     deductionType: {
       type: String,
-      required: true,
+      default: 'fixed',
       enum: ['percentage', 'fixed'],
     },
     deductionValue: {
       type: Number,
-      required: true,
+      default: 0,
       min: 0,
     },
     deductionAmount: {

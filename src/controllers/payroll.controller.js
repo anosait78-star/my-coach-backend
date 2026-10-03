@@ -6,18 +6,30 @@ const { sendSuccess } = require('../utils/apiResponse');
 const { logActivity } = require('../utils/activityLogger');
 const { resolveAcademyScope, assertAcademyAccess } = require('../utils/academyScope');
 
-const computeNetSalary = ({ baseSalary, monthlyAttendanceTarget, presentCount, deductionType, deductionValue }) => {
-  const absentCount = Math.max(monthlyAttendanceTarget - presentCount, 0);
-  const salary = baseSalary || 0;
-  let deductionAmount;
-  if (deductionType === 'percentage') {
-    deductionAmount = salary * (deductionValue / 100) * absentCount;
-  } else {
-    deductionAmount = deductionValue * absentCount;
+const WEEKDAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+// أيام العمل المتوقعة للموظف في الشهر (حسب workingDays) — للعرض فقط (الغياب).
+const expectedWorkingDays = (workingDays, year, mon) => {
+  const days = Array.isArray(workingDays) ? workingDays : [];
+  const last = new Date(year, mon, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= last; d++) {
+    if (days.includes(WEEKDAY_AR[new Date(year, mon - 1, d).getDay()])) count += 1;
   }
-  deductionAmount = Math.min(deductionAmount, salary);
-  const netSalary = salary - deductionAmount;
-  return { absentCount, deductionAmount, netSalary };
+  return count;
+};
+
+// المرتب = سعر التمرينة × أيام الحضور المسجّلة في الشهر. لا خصم: يوم الغياب
+// ببساطة لا يُدفع. absentCount للعرض فقط (أيام العمل المتوقعة − الحضور).
+const computeSessionSalary = ({ sessionRate, presentCount, expectedDays }) => {
+  const rate = sessionRate || 0;
+  const salary = rate * presentCount;
+  return {
+    absentCount: Math.max(expectedDays - presentCount, 0),
+    deductionAmount: 0,
+    baseSalary: salary,
+    netSalary: salary,
+  };
 };
 
 // ─── POST /payroll/generate ──────────────────────────────────────────────────
@@ -54,12 +66,10 @@ const generatePayroll = async (req, res, next) => {
       date: { $gte: startDate, $lte: endDate },
     });
 
-    const { absentCount, deductionAmount, netSalary } = computeNetSalary({
-      baseSalary: staff.baseSalary,
-      monthlyAttendanceTarget: staff.monthlyAttendanceTarget,
+    const { absentCount, deductionAmount, baseSalary, netSalary } = computeSessionSalary({
+      sessionRate: staff.sessionRate,
       presentCount,
-      deductionType: staff.deductionType,
-      deductionValue: staff.deductionValue,
+      expectedDays: expectedWorkingDays(staff.workingDays, year, mon),
     });
 
     const payrollDoc = await Payroll.findOneAndUpdate(
@@ -68,12 +78,12 @@ const generatePayroll = async (req, res, next) => {
         academyId: staff.academyId,
         staffId: staff._id,
         month,
-        baseSalary: staff.baseSalary || 0,
-        monthlyAttendanceTarget: staff.monthlyAttendanceTarget,
+        baseSalary,
+        sessionRate: staff.sessionRate || 0,
         presentCount,
         absentCount,
-        deductionType: staff.deductionType,
-        deductionValue: staff.deductionValue,
+        deductionType: 'fixed',
+        deductionValue: 0,
         deductionAmount,
         netSalary,
         generatedAt: new Date(),

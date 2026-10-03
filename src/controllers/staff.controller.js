@@ -10,14 +10,13 @@ const { resolveAcademyScope, assertAcademyAccess } = require('../utils/academySc
 // الحقول المالية في سجل الموظف. تُحجب عن الحسابات الإدارية المحدودة
 // (canViewReports=false) قراءةً وكتابةً — إخفاؤها في الواجهة وحدها لا يمنع
 // قراءتها من الـ API مباشرةً.
-const SALARY_FIELDS = ['baseSalary', 'deductionType', 'deductionValue'];
+const SALARY_FIELDS = ['sessionRate', 'baseSalary', 'deductionType', 'deductionValue'];
 
 const canSeeSalary = (req) => req.user.canViewReports !== false;
 
-// إعدادات راتب محايدة للموظف الذي يُنشئه حساب محدود: لا راتب ولا خصم.
-// (الحقلان مطلوبان في المخطّط، فلا يمكن تركهما فارغين.) يملؤها لاحقاً حساب
+// الموظف الذي يُنشئه حساب محدود يبدأ بسعر تمرينة صفر — يضبطه لاحقاً حساب
 // كامل الصلاحيات من شاشة الموظفين.
-const NEUTRAL_SALARY = { deductionType: 'fixed', deductionValue: 0 };
+const NEUTRAL_SALARY = { sessionRate: 0 };
 
 // يحذف الحقول المالية من الاستجابة للحسابات المحدودة.
 const present = (req, staff) => {
@@ -83,8 +82,7 @@ const getStaffById = async (req, res, next) => {
 // ─── POST /staff ─────────────────────────────────────────────────────────────
 const createStaff = async (req, res, next) => {
   const {
-    fullName, position, phone, email, hireDate, baseSalary,
-    monthlyAttendanceTarget, deductionType, deductionValue,
+    fullName, position, phone, email, hireDate, sessionRate,
   } = req.body;
 
   const staffData = {
@@ -93,15 +91,12 @@ const createStaff = async (req, res, next) => {
     position,
     phone,
     hireDate,
-    monthlyAttendanceTarget,
-    deductionType,
-    deductionValue,
   };
 
   if (email !== undefined && email !== '') staffData.email = email;
 
   if (canSeeSalary(req)) {
-    if (baseSalary !== undefined && baseSalary !== '') staffData.baseSalary = baseSalary;
+    if (sessionRate !== undefined && sessionRate !== '') staffData.sessionRate = sessionRate;
   } else {
     // نتجاهل أي قيم مالية مُرسَلة ونثبّت إعدادات محايدة.
     Object.assign(staffData, NEUTRAL_SALARY);
@@ -133,7 +128,6 @@ const updateStaff = async (req, res, next) => {
 
   const allowedFields = [
     'fullName', 'position', 'phone', 'email', 'hireDate',
-    'monthlyAttendanceTarget',
     // الحقول المالية تُضاف فقط لمن يملك صلاحيتها؛ غيره لا يمسّ القيم القائمة.
     ...(canSeeSalary(req) ? SALARY_FIELDS : []),
   ];

@@ -37,26 +37,11 @@ const createValidators = [
   body('hireDate')
     .notEmpty().withMessage('تاريخ التعيين مطلوب')
     .isDate().withMessage('تاريخ التعيين غير صحيح'),
-  body('baseSalary')
-    .optional({ checkFalsy: true })
-    .isFloat({ min: 0 }).withMessage('الراتب الأساسي غير صحيح'),
-  body('monthlyAttendanceTarget')
-    .notEmpty().withMessage('عدد أيام الحضور المطلوبة مطلوب')
-    .isInt({ min: 1 }).withMessage('عدد أيام الحضور المطلوبة غير صحيح'),
-  body('deductionType')
+  // المرتب = سعر التمرينة × أيام الحضور (لكل الموظفين).
+  body('sessionRate')
     .if(salaryVisible)
-    .notEmpty().withMessage('نوع الخصم مطلوب')
-    .isIn(['percentage', 'fixed']).withMessage('نوع الخصم غير صحيح'),
-  body('deductionValue')
-    .if(salaryVisible)
-    .notEmpty().withMessage('قيمة الخصم مطلوبة')
-    .isFloat({ min: 0 }).withMessage('قيمة الخصم غير صحيحة')
-    .custom((value, { req }) => {
-      if (req.body.deductionType === 'percentage' && Number(value) > 100) {
-        throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%');
-      }
-      return true;
-    }),
+    .notEmpty().withMessage('سعر التمرينة مطلوب')
+    .isFloat({ min: 0 }).withMessage('سعر التمرينة غير صحيح'),
   body('workingDays').custom((value) => {
     const arr = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(',') : []);
     if (!arr || arr.length === 0) throw new Error('أيام العمل مطلوبة');
@@ -72,10 +57,7 @@ const updateValidators = [
   body('phone').optional().matches(/^[0-9+\-\s()]{7,20}$/).withMessage('رقم الهاتف غير صحيح'),
   body('email').optional({ checkFalsy: true }).isEmail().withMessage('البريد الإلكتروني غير صحيح'),
   body('hireDate').optional().isDate().withMessage('تاريخ التعيين غير صحيح'),
-  body('baseSalary').optional({ checkFalsy: true }).isFloat({ min: 0 }).withMessage('الراتب الأساسي غير صحيح'),
-  body('monthlyAttendanceTarget').optional().isInt({ min: 1 }).withMessage('عدد أيام الحضور المطلوبة غير صحيح'),
-  body('deductionType').optional().isIn(['percentage', 'fixed']).withMessage('نوع الخصم غير صحيح'),
-  body('deductionValue').optional().isFloat({ min: 0 }).withMessage('قيمة الخصم غير صحيحة'),
+  body('sessionRate').optional({ checkFalsy: true }).isFloat({ min: 0 }).withMessage('سعر التمرينة غير صحيح'),
 ];
 
 router.get('/', getStaff);

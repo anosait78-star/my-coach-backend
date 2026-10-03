@@ -69,14 +69,22 @@ const staffSchema = new mongoose.Schema(
         message: 'أيام العمل غير صحيحة',
       },
     },
+    // المرتب = سعر التمرينة × أيام الحضور المسجّلة في الشهر (لكل الموظفين).
+    sessionRate: {
+      type: Number,
+      default: 0,
+      min: [0, 'سعر التمرينة لا يمكن أن يكون سالباً'],
+    },
+    // حقول النظام القديم (هدف أيام شهري + خصم غياب) — لم تعد تُستخدم في
+    // حساب المرتب، وباقية اختيارية فقط حتى لا تفشل قراءة السجلات القديمة.
     monthlyAttendanceTarget: {
       type: Number,
-      required: [true, 'عدد أيام الحضور المطلوبة مطلوب'],
+      default: null,
       min: [1, 'عدد أيام الحضور المطلوبة يجب أن يكون 1 على الأقل'],
     },
     deductionType: {
       type: String,
-      required: [true, 'نوع الخصم مطلوب'],
+      default: 'fixed',
       enum: {
         values: ['percentage', 'fixed'],
         message: 'نوع الخصم غير صحيح',
@@ -84,7 +92,7 @@ const staffSchema = new mongoose.Schema(
     },
     deductionValue: {
       type: Number,
-      required: [true, 'قيمة الخصم مطلوبة'],
+      default: 0,
       min: [0, 'قيمة الخصم لا يمكن أن تكون سالبة'],
       validate: {
         validator: function (v) {
