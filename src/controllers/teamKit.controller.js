@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const TeamKit = require('../models/teamKit.model');
 const KitBooking = require('../models/kitBooking.model');
 const Player = require('../models/player.model');
@@ -150,6 +151,9 @@ const deleteKit = async (req, res, next) => {
 // نبني الاستجابة صراحةً (بدل sendPaginated) لإضافة pendingCount في الـ meta.
 const getBookings = async (req, res, next) => {
   const academyId = resolveAcademyFilter(req);
+  if (!mongoose.isValidObjectId(academyId)) {
+    return next(new AppError('معرّف الأكاديمية غير صحيح', 400));
+  }
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const limit = Math.min(60, Math.max(1, parseInt(req.query.limit) || 20));
   const skip = (page - 1) * limit;
@@ -159,12 +163,23 @@ const getBookings = async (req, res, next) => {
   if (req.query.status && validStatus.includes(req.query.status)) {
     filter.status = req.query.status;
   }
+  // عدد كل مقاس ضمن الحالة المختارة (قبل فلتر المقاس) لأزرار الفرز.
+  const statusFilter = { ...filter };
+  if (req.query.size && KIT_SIZES.includes(req.query.size)) {
+    filter.size = req.query.size;
+  }
 
-  const [items, total, pendingCount] = await Promise.all([
+  const [items, total, pendingCount, sizeAgg] = await Promise.all([
     KitBooking.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit),
     KitBooking.countDocuments(filter),
     KitBooking.countDocuments({ academyId, status: 'pending_review' }),
+    KitBooking.aggregate([
+      { $match: { ...statusFilter, academyId: new mongoose.Types.ObjectId(String(academyId)) } },
+      { $group: { _id: '$size', count: { $sum: 1 } } },
+    ]),
   ]);
+  const sizeCounts = {};
+  for (const s of sizeAgg) if (s._id) sizeCounts[s._id] = s.count;
 
   return res.status(200).json({
     success: true,
@@ -178,6 +193,7 @@ const getBookings = async (req, res, next) => {
       hasNext: page * limit < total,
       hasPrev: page > 1,
       pendingCount,
+      sizeCounts,
     },
   });
 };
