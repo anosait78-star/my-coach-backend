@@ -753,8 +753,9 @@ const deleteRejectedJoinRequest = async (req, res, next) => {
       player.academyId.toString() !== req.user.academyId?.toString()) {
     return next(new AppError('ليس لديك صلاحية على هذا الطلب', 403));
   }
-  if (player.registrationStatus !== 'rejected') {
-    return next(new AppError('يمكن حذف الطلبات المرفوضة فقط', 409));
+  // المعتمد أصبح لاعباً فعلياً — يُحذف من شاشة اللاعب لا من الطلبات.
+  if (!['rejected', 'pending'].includes(player.registrationStatus)) {
+    return next(new AppError('يمكن حذف الطلبات المعلّقة أو المرفوضة فقط', 409));
   }
 
   const account = await PlayerAccount.findOne({ playerId: player._id });

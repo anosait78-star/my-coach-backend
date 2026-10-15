@@ -333,7 +333,23 @@ const updateOrderStatus = async (req, res, next) => {
   return sendSuccess(res, { data: order.toJSON(), message: 'تم تحديث حالة الطلب بنجاح' });
 };
 
+// ─── DELETE /store/orders/:id (حذف نهائي) ─────────────────────────────────────
+const deleteOrder = async (req, res, next) => {
+  const order = await StoreOrder.findById(req.params.id);
+  if (!order) return next(new AppError('الطلب غير موجود', 404));
+  if (
+    req.user.role !== 'super_admin' &&
+    order.academyId.toString() !== req.user.academyId?.toString()
+  ) {
+    return next(new AppError('ليس لديك صلاحية للوصول إلى هذا الطلب', 403));
+  }
+  await order.deleteOne();
+  logger.info(`Store order deleted: ${order._id}`);
+  return sendSuccess(res, { message: 'تم حذف الطلب' });
+};
+
 module.exports = {
+  deleteOrder,
   getProducts,
   createProduct,
   updateProduct,

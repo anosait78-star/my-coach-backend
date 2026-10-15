@@ -75,6 +75,19 @@ const kitReceiptStorage = new CloudinaryStorage({
 });
 
 // صورة طقم الفريق — نفس خدمة Cloudinary، مجلد مستقل. لا خدمة رفع جديدة.
+// صور بروفايل اللاعب (تُعرض بجانب فيديوهاته).
+const playerMediaStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'basketball_academy/player_media',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [
+      { width: 1600, height: 1600, crop: 'limit' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ],
+  },
+});
+
 const teamKitStorage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -186,6 +199,12 @@ const uploadStoreImage = multer({
   fileFilter,
 });
 
+const uploadPlayerMedia = multer({
+  storage: playerMediaStorage,
+  limits: { fileSize: MAX_IMAGE_BYTES },
+  fileFilter,
+});
+
 const uploadKitImage = multer({
   storage: teamKitStorage,
   limits: { fileSize: MAX_IMAGE_BYTES },
@@ -225,6 +244,7 @@ module.exports = {
   uploadAlbumImage,
   uploadStoreImage,
   uploadKitImage,
+  uploadPlayerMedia,
   uploadKitReceipt,
   uploadOfferImage,
   uploadJoinRequestFiles,

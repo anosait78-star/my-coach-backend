@@ -10,6 +10,7 @@ const {
   updateStoreSettings,
   getOrders,
   updateOrderStatus,
+  deleteOrder,
 } = require('../controllers/store.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const { uploadStoreImage } = require('../config/cloudinary');
@@ -48,6 +49,14 @@ router.patch(
   ],
   validate,
   updateOrderStatus
+);
+
+router.delete(
+  '/orders/:id',
+  manage,
+  [param('id').isMongoId().withMessage('معرّف الطلب غير صحيح')],
+  validate,
+  deleteOrder
 );
 
 // ── المنتجات ──

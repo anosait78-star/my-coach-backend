@@ -4,6 +4,7 @@ const {
   listRenewalRequests,
   getPendingCount,
   reviewRenewalRequest,
+  deleteRenewalRequest,
 } = require('../controllers/renewalRequest.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
@@ -25,6 +26,13 @@ router.patch(
   ],
   validate,
   reviewRenewalRequest
+);
+
+router.delete(
+  '/:id',
+  [param('id').isMongoId().withMessage('معرّف الطلب غير صحيح')],
+  validate,
+  deleteRenewalRequest
 );
 
 module.exports = router;

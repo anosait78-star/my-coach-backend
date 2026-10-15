@@ -52,8 +52,23 @@ app.set('trust proxy', 1);
 // نتأكد أن اتصال MongoDB جاهز قبل تنفيذ أي مسار — ضروري في بيئة serverless
 // حيث لا يوجد ضمان إن استدعاء connectDB() عند إقلاع الوحدة قد اكتمل قبل
 // وصول أول طلب لحاوية باردة (cold start).
+// نسجّل الطلبات البطيئة (> 3 ثوانٍ) مع زمن انتظار اتصال القاعدة، لتشخيص
+// حالات "التعليق عند الدخول" من سجلات Vercel.
 app.use((req, res, next) => {
-  connectDB().then(() => next()).catch(next);
+  const started = Date.now();
+  let dbMs = 0;
+  res.on('finish', () => {
+    const total = Date.now() - started;
+    if (total > 3000) {
+      logger.warn(`[SLOW] ${req.method} ${req.originalUrl} ${res.statusCode} total=${total}ms db=${dbMs}ms`);
+    }
+  });
+  connectDB()
+    .then(() => {
+      dbMs = Date.now() - started;
+      next();
+    })
+    .catch(next);
 });
 
 app.use(helmet());

@@ -3,6 +3,7 @@ const { body, param, query } = require('express-validator');
 const {
   getPlayerVideos,
   createPlayerVideo,
+  createPlayerImage,
   updatePlayerVideo,
   deletePlayerVideo,
   likeAsAdmin,
@@ -13,6 +14,7 @@ const {
 } = require('../controllers/playerVideo.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validate');
+const { uploadPlayerMedia } = require('../config/cloudinary');
 
 const router = express.Router();
 
@@ -55,6 +57,10 @@ router.post(
   validate,
   createPlayerVideo
 );
+
+// ─── POST /player-videos/image (صورة في بروفايل اللاعب) ─────────────────────
+// التحقق من playerId داخل الـ controller (حتى تُحذف الصورة المرفوعة عند الرفض).
+router.post('/image', manage, uploadPlayerMedia.single('image'), createPlayerImage);
 
 router.patch('/:id', manage, [...idParam, ...contentValidators], validate, updatePlayerVideo);
 router.delete('/:id', manage, idParam, validate, deletePlayerVideo);

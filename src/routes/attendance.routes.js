@@ -6,6 +6,7 @@ const {
   getAttendanceReport,
   searchAttendancePlayers,
   getPlayerAttendanceSummary,
+  getPlayerAttendanceCalendar,
   deleteAttendance,
 } = require('../controllers/attendance.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
@@ -50,6 +51,9 @@ router.get('/players', searchAttendancePlayers);
 
 // GET /attendance/player/:id/summary
 router.get('/player/:id/summary', idParam('id'), validate, getPlayerAttendanceSummary);
+
+// GET /attendance/player/:id/calendar
+router.get('/player/:id/calendar', idParam('id'), validate, getPlayerAttendanceCalendar);
 
 // GET /attendance
 router.get('/', getAttendance);

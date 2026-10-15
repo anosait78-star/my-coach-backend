@@ -6,6 +6,7 @@ const {
   getPlayerNotifications,
   markPlayerNotificationRead,
   markAllPlayerRead,
+  deletePlayerNotification,
 } = require('../controllers/notification.controller');
 const { updateMyPhoto, deleteMyPhoto } = require('../controllers/playerProfile.controller');
 const { getPlayerAlbum } = require('../controllers/academyAlbum.controller');
@@ -135,6 +136,12 @@ router.patch(
   [param('id').isMongoId().withMessage('معرّف الإشعار غير صحيح')],
   validate,
   markPlayerNotificationRead
+);
+router.delete(
+  '/notifications/:id',
+  [param('id').isMongoId().withMessage('معرّف الإشعار غير صحيح')],
+  validate,
+  deletePlayerNotification
 );
 
 module.exports = router;

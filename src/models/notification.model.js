@@ -41,6 +41,8 @@ const notificationSchema = new mongoose.Schema(
         'PLAYER_PHOTO_UPDATED',
         'ALBUM_PHOTO_ADDED',
         'OFFER_ADDED',
+        'KIT_BOOKING_APPROVED',
+        'KIT_BOOKING_REJECTED',
       ],
       required: true,
     },
@@ -48,6 +50,9 @@ const notificationSchema = new mongoose.Schema(
     body: { type: String, default: '', trim: true },
     meta: { type: mongoose.Schema.Types.Mixed, default: {} },
     isRead: { type: Boolean, default: false },
+    // حذف من مركز الإشعارات: يبقى السجل حتى لا يُعاد توليد التنبيهات التلقائية
+    // (alertKey) لكنه لا يظهر للمستخدم أبداً.
+    isDeleted: { type: Boolean, default: false },
   },
   {
     timestamps: { createdAt: 'createdAt', updatedAt: false },

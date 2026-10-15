@@ -49,12 +49,14 @@ const playerVideoSchema = new mongoose.Schema(
     },
     provider: {
       type: String,
-      enum: ['youtube', 'drive'],
+      // image = صورة مرفوعة على Cloudinary (url = رابط الصورة).
+      enum: ['youtube', 'drive', 'image'],
       required: true,
     },
     // معرّف فيديو يوتيوب (null لغير يوتيوب) — يُشتق منه المصغّر.
     videoKey: { type: String, default: null },
     thumbnailUrl: { type: String, default: '' },
+    image_public_id: { type: String, default: null, select: false },
     // من أضاف الفيديو من الإدارة (للتوثيق والعرض).
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     createdByName: { type: String, default: '', trim: true },
@@ -75,6 +77,8 @@ const playerVideoSchema = new mongoose.Schema(
         // الـ controller حسب هوية الطالب.
         ret.likesCount = Array.isArray(ret.likes) ? ret.likes.length : 0;
         delete ret.likes;
+        delete ret.image_public_id;
+        ret.mediaType = ret.provider === 'image' ? 'image' : 'video';
         delete ret.__v;
         return ret;
       },

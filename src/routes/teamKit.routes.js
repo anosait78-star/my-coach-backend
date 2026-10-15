@@ -7,6 +7,7 @@ const {
   getBookings,
   reviewBooking,
   createManagerBooking,
+  deleteBooking,
 } = require('../controllers/teamKit.controller');
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 const { uploadKitImage } = require('../config/cloudinary');
@@ -64,6 +65,14 @@ router.patch(
   ],
   validate,
   reviewBooking
+);
+
+router.delete(
+  '/bookings/:id',
+  manage,
+  [param('id').isMongoId().withMessage('معرّف الحجز غير صحيح')],
+  validate,
+  deleteBooking
 );
 
 module.exports = router;

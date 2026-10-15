@@ -113,7 +113,20 @@ const reviewRenewalRequest = async (req, res, next) => {
   });
 };
 
+// ─── DELETE /renewal-requests/:id (حذف نهائي + صورة الإيصال) ─────────────────
+const deleteRenewalRequest = async (req, res, next) => {
+  const request = await RenewalRequest.findById(req.params.id).select('+receipt_public_id');
+  if (!request) return next(new AppError('الطلب غير موجود', 404));
+  if (request.receipt_public_id) {
+    await deleteImage(request.receipt_public_id).catch(() => {});
+  }
+  await request.deleteOne();
+  logger.info(`Renewal request deleted: ${request._id}`);
+  return sendSuccess(res, { message: 'تم حذف الطلب' });
+};
+
 module.exports = {
+  deleteRenewalRequest,
   createPlayerRenewalRequest,
   listRenewalRequests,
   getPendingCount,

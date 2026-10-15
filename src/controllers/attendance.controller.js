@@ -581,6 +581,69 @@ const getPlayerAttendanceSummary = async (req, res, next) => {
   });
 };
 
+// ─── GET /attendance/player/:id/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD ───────
+// يوم بيوم (الأحدث أولاً): أيام التدريب حسب attendanceDays حضر/غاب، وأي حضور
+// في يوم آخر. الافتراضي آخر 60 يوماً حتى اليوم، والحد الأقصى ~سنة.
+const getPlayerAttendanceCalendar = async (req, res, next) => {
+  const player = await Player.findById(req.params.id)
+    .select('fullName playerCode sport image_url academyId attendanceDays created_at');
+  if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  assertPlayerScope(req, player, 'ليس لديك صلاحية للوصول إلى هذا اللاعب');
+
+  const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const parse = (str) => {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  const today = todayFor(req);
+  const to = DATE_RE.test(req.query.to || '') && req.query.to < today ? req.query.to : today;
+  let from = DATE_RE.test(req.query.from || '') ? req.query.from : null;
+  if (!from) {
+    const f = parse(to);
+    f.setDate(f.getDate() - 59);
+    from = ymd(f);
+  }
+  if (from > to) return next(new AppError('نطاق التاريخ غير صحيح', 400));
+
+  // لا نحسب غياباً قبل تسجيل اللاعب في الأكاديمية.
+  const joined = player.created_at ? dateToStr(player.created_at) : null;
+
+  const records = await Attendance.find({
+    playerId: player._id,
+    date: { $gte: from, $lte: to },
+  }).select('date time kind').lean();
+  const byDate = new Map(records.map((r) => [r.date, r]));
+  const scheduled = new Set(Array.isArray(player.attendanceDays) ? player.attendanceDays : []);
+
+  const days = [];
+  let present = 0;
+  let absent = 0;
+  const cur = parse(to);
+  const start = parse(from);
+  for (let guard = 0; cur >= start && guard < 400; guard += 1) {
+    const date = ymd(cur);
+    const weekday = WEEKDAY_AR[cur.getDay()];
+    const rec = byDate.get(date);
+    if (rec) {
+      present += 1;
+      days.push({
+        date, weekday, status: 'present', scheduled: scheduled.has(weekday),
+        time: rec.time || '', kind: kindOf(rec), id: rec._id.toString(),
+      });
+    } else if (scheduled.has(weekday) && (!joined || date >= joined)) {
+      absent += 1;
+      days.push({ date, weekday, status: 'absent', scheduled: true });
+    }
+    cur.setDate(cur.getDate() - 1);
+  }
+
+  return sendSuccess(res, {
+    data: { from, to, present, absent, days },
+    message: 'تم جلب سجل الحضور اليومي بنجاح',
+  });
+};
+
 // ─── DELETE /attendance/:id ──────────────────────────────────────────────────
 const deleteAttendance = async (req, res, next) => {
   const record = await Attendance.findById(req.params.id).populate('playerId', 'fullName');
@@ -609,6 +672,7 @@ module.exports = {
   getAttendanceReport,
   searchAttendancePlayers,
   getPlayerAttendanceSummary,
+  getPlayerAttendanceCalendar,
   deleteAttendance,
   // مُصدَّرة لبوابة اللاعب (عدد الحضور على أساس الاشتراك).
   subscriptionStats,

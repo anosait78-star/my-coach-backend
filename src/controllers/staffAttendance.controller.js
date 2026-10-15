@@ -26,6 +26,8 @@ const markAttendance = async (req, res, next) => {
       status,
       markedBy: req.user._id,
       notes: notes !== undefined ? notes : null,
+      // الغياب اليدوي يمسح أوقات المسح إن وُجدت.
+      ...(status === 'absent' ? { checkIn: null, checkOut: null } : {}),
     },
     { upsert: true, new: true, runValidators: true }
   );
@@ -35,6 +37,77 @@ const markAttendance = async (req, res, next) => {
     entityId: record._id, entityName: staff.fullName, academyId: staff.academyId,
   });
   return sendSuccess(res, { data: record, message: 'تم تسجيل الحضور بنجاح' });
+};
+
+// ─── POST /staff-attendance/scan ─────────────────────────────────────────────
+// الأدمن يمسح QR المدرب: أول مسح في اليوم = حضور، الثاني = انصراف.
+// code: "STAFF:<staffId>" أو المعرّف نفسه. localDate/localTime من جهاز الأدمن
+// (السيرفر UTC والأكاديمية +2/+3).
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^\d{2}:\d{2}$/;
+const pad2 = (n) => String(n).padStart(2, '0');
+
+const scanAttendance = async (req, res, next) => {
+  const raw = String(req.body.code || '').trim();
+  const staffId = raw.toUpperCase().startsWith('STAFF:') ? raw.slice(6).trim() : raw;
+  if (!/^[a-f\d]{24}$/i.test(staffId)) {
+    return next(new AppError('كود المدرب غير صحيح', 400));
+  }
+
+  const staff = await Staff.findById(staffId).select('fullName position photo_url academyId isActive');
+  if (!staff) return next(new AppError('المدرب غير موجود', 404));
+  assertAcademyAccess(req, staff, 'هذا المدرب لا يتبع أكاديميتك');
+  if (staff.isActive === false) return next(new AppError('هذا المدرب غير نشط', 400));
+
+  const now = new Date();
+  const date = DATE_RE.test(req.body.localDate || '')
+    ? req.body.localDate
+    : `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  const time = TIME_RE.test(req.body.localTime || '')
+    ? req.body.localTime
+    : `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+
+  let record = await StaffAttendance.findOne({ staffId: staff._id, date });
+  let action;
+  if (!record || record.status !== 'present' || !record.checkIn) {
+    action = 'check_in';
+    record = await StaffAttendance.findOneAndUpdate(
+      { staffId: staff._id, date },
+      {
+        staffId: staff._id, academyId: staff.academyId, date, status: 'present',
+        checkIn: time, checkOut: null, method: 'scan', markedBy: req.user._id,
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+  } else if (!record.checkOut) {
+    action = 'check_out';
+    record.checkOut = time;
+    record.markedBy = req.user._id;
+    await record.save();
+  } else {
+    return next(new AppError(
+      `تم تسجيل حضور (${record.checkIn}) وانصراف (${record.checkOut}) ${staff.fullName} اليوم بالفعل`,
+      409
+    ));
+  }
+
+  logActivity(req, {
+    actionType: 'MARK_STAFF_ATTENDANCE', entityType: 'STAFF_ATTENDANCE',
+    entityId: record._id, entityName: staff.fullName, academyId: staff.academyId,
+  });
+  return sendSuccess(res, {
+    data: {
+      action,
+      record,
+      staff: {
+        _id: staff._id.toString(),
+        fullName: staff.fullName,
+        position: staff.position,
+        photo_url: staff.photo_url || null,
+      },
+    },
+    message: action === 'check_in' ? 'تم تسجيل الحضور' : 'تم تسجيل الانصراف',
+  });
 };
 
 // ─── GET /staff-attendance ───────────────────────────────────────────────────
@@ -91,4 +164,4 @@ const getAttendanceReport = async (req, res, next) => {
   return sendSuccess(res, { data: report, message: 'تم جلب تقرير الحضور بنجاح' });
 };
 
-module.exports = { markAttendance, getAttendanceHistory, getAttendanceReport };
+module.exports = { markAttendance, scanAttendance, getAttendanceHistory, getAttendanceReport };

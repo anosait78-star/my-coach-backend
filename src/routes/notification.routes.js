@@ -4,6 +4,7 @@ const {
   getAcademyNotifications,
   markAcademyNotificationRead,
   markAllAcademyRead,
+  deleteAcademyNotification,
   getAcademyAlerts,
   updateAlertState,
 } = require('../controllers/notification.controller');
@@ -33,6 +34,14 @@ router.patch(
   [param('id').isMongoId().withMessage('معرّف الإشعار غير صحيح')],
   validate,
   markAcademyNotificationRead
+);
+
+// DELETE /api/v1/notifications/:id
+router.delete(
+  '/:id',
+  [param('id').isMongoId().withMessage('معرّف الإشعار غير صحيح')],
+  validate,
+  deleteAcademyNotification
 );
 
 module.exports = router;

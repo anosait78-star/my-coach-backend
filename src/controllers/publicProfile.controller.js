@@ -112,6 +112,7 @@ const getPublicProfile = async (req, res, next) => {
         description: v.description || '',
         url: v.url,
         provider: v.provider,
+        mediaType: v.provider === 'image' ? 'image' : 'video',
         videoKey: v.videoKey || '',
         thumbnailUrl: v.thumbnailUrl || '',
         created_at: v.created_at,

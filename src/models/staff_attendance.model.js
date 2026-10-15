@@ -27,6 +27,10 @@ const staffAttendanceSchema = new mongoose.Schema(
         message: 'حالة الحضور غير صحيحة',
       },
     },
+    // وقت الحضور والانصراف 'HH:mm' (بتوقيت جهاز الأدمن) — يُملآن بمسح QR المدرب.
+    checkIn: { type: String, default: null, match: [/^\d{2}:\d{2}$/, 'صيغة الوقت غير صحيحة'] },
+    checkOut: { type: String, default: null, match: [/^\d{2}:\d{2}$/, 'صيغة الوقت غير صحيحة'] },
+    method: { type: String, enum: ['manual', 'scan'], default: 'manual' },
     markedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

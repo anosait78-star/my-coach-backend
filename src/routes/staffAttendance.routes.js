@@ -2,6 +2,7 @@ const express = require('express');
 const { body, query } = require('express-validator');
 const {
   markAttendance,
+  scanAttendance,
   getAttendanceHistory,
   getAttendanceReport,
 } = require('../controllers/staffAttendance.controller');
@@ -31,5 +32,11 @@ router.get('/report', reportValidators, validate, getAttendanceReport);
 
 router.get('/', getAttendanceHistory);
 router.post('/', markValidators, validate, markAttendance);
+router.post(
+  '/scan',
+  [body('code').notEmpty().withMessage('كود المدرب مطلوب').isLength({ max: 100 })],
+  validate,
+  scanAttendance
+);
 
 module.exports = router;

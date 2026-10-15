@@ -7,6 +7,7 @@ const { parseVideoLink, ALLOWED_HINT } = require('../utils/videoLink');
 const { notify } = require('../utils/notificationService');
 const { logActivity } = require('../utils/activityLogger');
 const logger = require('../utils/logger');
+const { deleteImage } = require('../config/cloudinary');
 
 // ─── هوية الفاعل ─────────────────────────────────────────────────────────────
 // كل عملية (إعجاب/تعليق) يقوم بها إمّا اللاعب صاحب البروفايل أو أحد مدراء
@@ -151,6 +152,56 @@ const createPlayerVideo = async (req, res, next) => {
 };
 
 // ─── PATCH /player-videos/:id ───────────────────────────────────────────────
+// ─── POST /player-videos/image (multipart: image, playerId, title?, description?) ──
+const createPlayerImage = async (req, res, next) => {
+  const file = req.file;
+  if (!file) return next(new AppError('الصورة مطلوبة', 400));
+  let player;
+  try {
+    player = await loadPlayerAsAdmin(req, req.body.playerId);
+  } catch (err) {
+    await deleteImage(file.filename).catch(() => {});
+    throw err;
+  }
+
+  const title = String(req.body.title || '').trim().slice(0, 150) || 'صورة';
+  const image = await PlayerVideo.create({
+    academyId: player.academyId,
+    playerId: player._id,
+    title,
+    description: String(req.body.description || '').trim().slice(0, 1000),
+    url: file.path,
+    provider: 'image',
+    thumbnailUrl: file.path,
+    image_public_id: file.filename,
+    createdBy: req.user._id,
+    createdByName: req.user.name || '',
+  });
+
+  logActivity(req, {
+    actionType: 'CREATE_PLAYER_VIDEO',
+    entityType: 'PLAYER_VIDEO',
+    entityId: image._id,
+    entityName: title,
+    academyId: player.academyId,
+  });
+  notify({
+    recipientType: 'player',
+    recipientId: player._id,
+    academyId: player.academyId,
+    type: 'PLAYER_VIDEO_ADDED',
+    title: 'صورة جديدة في بروفايلك',
+    body: title,
+    meta: { videoId: image._id.toString() },
+  });
+
+  return sendSuccess(res, {
+    data: serialize(image, adminActor(req)),
+    message: 'تمت إضافة الصورة بنجاح',
+    statusCode: 201,
+  });
+};
+
 const updatePlayerVideo = async (req, res, next) => {
   const video = await loadVideoAsAdmin(req, req.params.id);
 
@@ -162,7 +213,8 @@ const updatePlayerVideo = async (req, res, next) => {
   if (req.body.description !== undefined) {
     video.description = String(req.body.description).trim();
   }
-  if (req.body.url !== undefined) {
+  // رابط الصورة لا يُعدَّل (تُحذف وتُرفع غيرها).
+  if (req.body.url !== undefined && video.provider !== 'image') {
     const link = parseVideoLink(req.body.url);
     if (!link) return next(new AppError(ALLOWED_HINT, 400));
     video.url = link.url;
@@ -191,6 +243,10 @@ const deletePlayerVideo = async (req, res, next) => {
 
   // التعليقات تُحذف مع الفيديو — لا تُترك يتيمة.
   await PlayerVideoComment.deleteMany({ videoId: video._id });
+  if (video.provider === 'image') {
+    const withId = await PlayerVideo.findById(video._id).select('+image_public_id');
+    if (withId?.image_public_id) await deleteImage(withId.image_public_id).catch(() => {});
+  }
   await video.deleteOne();
 
   logActivity(req, {
@@ -369,6 +425,7 @@ module.exports = {
   // مدير
   getPlayerVideos,
   createPlayerVideo,
+  createPlayerImage,
   updatePlayerVideo,
   deletePlayerVideo,
   likeAsAdmin,

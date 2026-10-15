@@ -8,6 +8,12 @@ const { deleteImage } = require('../config/cloudinary');
 const { KIT_SIZES } = require('../utils/kitSizes');
 const logger = require('../utils/logger');
 const { logActivity } = require('../utils/activityLogger');
+const { notify } = require('../utils/notificationService');
+
+// حجز "نشط" يمنع حجزاً جديداً لنفس الطقم؛ المرفوض يسمح بإعادة الحجز.
+const ACTIVE_STATUSES = ['pending_review', 'approved'];
+const findActiveBooking = (academyId, playerId, kitId) =>
+  KitBooking.findOne({ academyId, playerId, kitId, status: { $in: ACTIVE_STATUSES } });
 
 // نفس نمط المتجر/الألبوم: super_admin وحده يمرّر academyId صراحةً،
 // وكل من عداه مُقيَّد حتمياً بأكاديميته.
@@ -58,8 +64,13 @@ const parseSizes = (raw) => {
 const getKit = async (req, res, next) => {
   const academyId = resolveAcademyFilter(req);
   const kit = await TeamKit.findOne({ academyId });
+  // آخر حجز للاعب على هذا الطقم — لعرض حالته (قيد المراجعة/مؤكد/مرفوض).
+  const myBooking = kit
+    ? await KitBooking.findOne({ academyId, playerId: req.player._id, kitId: kit._id })
+      .sort({ created_at: -1 })
+    : null;
   return sendSuccess(res, {
-    data: kit ? kit.toJSON() : null,
+    data: kit ? { ...kit.toJSON(), myBooking: myBooking ? myBooking.toJSON() : null } : null,
     message: 'تم جلب طقم الفريق بنجاح',
   });
 };
@@ -196,6 +207,7 @@ const reviewBooking = async (req, res, next) => {
     booking.paidAmount = amount;
   }
 
+  const prevStatus = booking.status;
   const status = req.body.status;
   if (status !== undefined) {
     if (!['approved', 'rejected'].includes(status)) {
@@ -214,6 +226,19 @@ const reviewBooking = async (req, res, next) => {
 
   await booking.save();
 
+  if (status !== undefined && status !== prevStatus) {
+    const approved = status === 'approved';
+    notify({
+      recipientType: 'player', recipientId: booking.playerId, academyId: booking.academyId,
+      type: approved ? 'KIT_BOOKING_APPROVED' : 'KIT_BOOKING_REJECTED',
+      title: approved ? 'تم تأكيد حجز الطقم' : 'تم رفض حجز الطقم',
+      body: approved
+        ? `تم تأكيد حجزك لطقم "${booking.kitName}" مقاس ${booking.size}`
+        : `تم رفض حجزك لطقم "${booking.kitName}" — يمكنك الحجز مرة أخرى`,
+      meta: { bookingId: booking._id.toString(), status },
+    });
+  }
+
   logActivity(req, {
     actionType: 'REVIEW_KIT_BOOKING', entityType: 'KIT_BOOKING',
     entityId: booking._id, entityName: booking.playerName, academyId: booking.academyId,
@@ -230,6 +255,9 @@ const createManagerBooking = async (req, res, next) => {
 
   const player = await Player.findOne({ _id: req.body.playerId, academyId });
   if (!player) return next(new AppError('اللاعب غير موجود', 404));
+  if (await findActiveBooking(academyId, player._id, kit._id)) {
+    return next(new AppError('هذا اللاعب لديه حجز قائم لهذا الطقم بالفعل', 409));
+  }
 
   const size = req.body.size;
   if (!kit.availableSizes.includes(size)) {
@@ -276,6 +304,24 @@ const createManagerBooking = async (req, res, next) => {
 
 // ══════════════════════ جهة اللاعب ══════════════════════
 
+// ─── DELETE /team-kit/bookings/:id (حذف نهائي + صورة الإيصال) ─────────────────
+const deleteBooking = async (req, res, next) => {
+  const booking = await KitBooking.findById(req.params.id).select('+receipt_public_id');
+  if (!booking) return next(new AppError('الحجز غير موجود', 404));
+  assertAccess(req, booking);
+
+  if (booking.receipt_public_id) {
+    await deleteImage(booking.receipt_public_id).catch(() => {});
+  }
+  await booking.deleteOne();
+
+  logActivity(req, {
+    actionType: 'DELETE_KIT_BOOKING', entityType: 'KIT_BOOKING',
+    entityId: booking._id, entityName: booking.playerName, academyId: booking.academyId,
+  });
+  return sendSuccess(res, { message: 'تم حذف الحجز' });
+};
+
 // ─── GET /player/team-kit (قراءة فقط — أكاديمية اللاعب حصراً) ────────────────
 const getPlayerKit = async (req, res, next) => {
   const academyId = req.player.academyId;
@@ -312,6 +358,9 @@ const createPlayerBooking = async (req, res, next) => {
   if (!kit.availableSizes.includes(size)) {
     return reject('المقاس غير متاح لهذا الطقم');
   }
+  if (await findActiveBooking(academyId, player._id, kit._id)) {
+    return reject('لديك حجز قائم لهذا الطقم بالفعل', 409);
+  }
 
   const academy = await Academy.findById(academyId).select('currency');
 
@@ -347,4 +396,5 @@ module.exports = {
   createManagerBooking,
   getPlayerKit,
   createPlayerBooking,
+  deleteBooking,
 };
