@@ -43,6 +43,9 @@ const notificationSchema = new mongoose.Schema(
         'OFFER_ADDED',
         'KIT_BOOKING_APPROVED',
         'KIT_BOOKING_REJECTED',
+        // جدول بطولة نُشر / نتيجة مباراة بطولة سُجّلت.
+        'TOURNAMENT_SCHEDULED',
+        'TOURNAMENT_RESULT',
       ],
       required: true,
     },

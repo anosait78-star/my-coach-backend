@@ -5,7 +5,6 @@ const oid = mongoose.Schema.Types.ObjectId;
 // مباراة داخل بطولة (منفصلة عن Match الخاص بالمواعيد والتذكير).
 const fixtureSchema = new mongoose.Schema(
   {
-    academyId: { type: oid, ref: 'Academy', required: true },
     tournamentId: { type: oid, ref: 'Tournament', required: true },
     stage: { type: String, enum: ['league', 'group', 'knockout'], required: true },
     groupIndex: { type: Number, default: null },
@@ -35,7 +34,7 @@ const fixtureSchema = new mongoose.Schema(
     timestamps: true,
     toJSON: {
       transform(doc, ret) {
-        for (const k of ['_id', 'academyId', 'tournamentId', 'aId', 'bId', 'winnerId', 'matchId']) {
+        for (const k of ['_id', 'tournamentId', 'aId', 'bId', 'winnerId', 'matchId']) {
           ret[k] = ret[k] ? ret[k].toString() : null;
         }
         delete ret.__v;

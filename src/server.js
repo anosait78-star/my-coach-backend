@@ -40,6 +40,7 @@ const renewalRequestRoutes = require('./routes/renewalRequest.routes');
 const publicProfileRoutes = require('./routes/publicProfile.routes');
 const familyRoutes = require('./routes/family.routes');
 const offerRoutes = require('./routes/offer.routes');
+const tournamentRoutes = require('./routes/tournament.routes');
 
 const app = express();
 
@@ -153,6 +154,7 @@ app.use('/api/v1/renewal-requests', renewalRequestRoutes);
 app.use('/api/v1/public', publicProfileRoutes);
 app.use('/api/v1/families', familyRoutes);
 app.use('/api/v1/offers', offerRoutes);
+app.use('/api/v1/tournaments', tournamentRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

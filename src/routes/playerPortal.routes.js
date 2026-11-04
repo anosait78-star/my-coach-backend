@@ -23,6 +23,7 @@ const { getPlayerKit, createPlayerBooking } = require('../controllers/teamKit.co
 const { createPlayerRenewalRequest } = require('../controllers/renewalRequest.controller');
 const { enableMyShare } = require('../controllers/publicProfile.controller');
 const { getPlayerOffers } = require('../controllers/offer.controller');
+const { listPlayerTournaments, getPlayerTournament } = require('../controllers/tournament.controller');
 const { protectPlayer } = require('../middleware/protectPlayer');
 const { uploadPlayerImage, uploadKitReceipt } = require('../config/cloudinary');
 const { KIT_SIZES } = require('../utils/kitSizes');
@@ -39,6 +40,10 @@ router.get('/dashboard', getPlayerDashboard);
 
 // ── العروض والخصومات السارية لفرع اللاعب ──
 router.get('/offers', getPlayerOffers);
+
+// ── البطولات الظاهرة لفرع اللاعب (قراءة فقط) ──
+router.get('/tournaments', listPlayerTournaments);
+router.get('/tournaments/:id', getPlayerTournament);
 
 // ── رابط مشاركة صفحة اللاعب العامة (ينشئه إن لم يوجد) ──
 router.post('/share', enableMyShare);

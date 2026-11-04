@@ -3,10 +3,11 @@ const mongoose = require('mongoose');
 // بطولة (دوري / كأس / مجموعات ثم كأس) — فردية أو جماعية.
 const tournamentSchema = new mongoose.Schema(
   {
-    academyId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Academy',
-      required: [true, 'معرّف الأكاديمية مطلوب'],
+    // الفروع المشاركة (كل فرع = Academy). حساب الفرع يُنشئ لفرعه فقط،
+    // والحساب الرئيسي (super_admin) يختار فرعاً أو أكثر.
+    academyIds: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Academy' }],
+      validate: { validator: (a) => Array.isArray(a) && a.length > 0, message: 'يجب اختيار فرع واحد على الأقل' },
     },
     name: {
       type: String,
@@ -16,7 +17,6 @@ const tournamentSchema = new mongoose.Schema(
       maxlength: [150, 'اسم البطولة لا يمكن أن يتجاوز 150 حرف'],
     },
     sport: { type: String, trim: true, default: null },
-    branches: { type: [String], default: [] },
     ageGroup: { type: String, trim: true, default: '' },
     startDate: { type: String, default: null, match: [/^\d{4}-\d{2}-\d{2}$/, 'صيغة التاريخ غير صحيحة'] },
     endDate: { type: String, default: null, match: [/^\d{4}-\d{2}-\d{2}$/, 'صيغة التاريخ غير صحيحة'] },
@@ -80,7 +80,7 @@ const tournamentSchema = new mongoose.Schema(
     toJSON: {
       transform(doc, ret) {
         ret._id = ret._id.toString();
-        ret.academyId = ret.academyId?.toString();
+        ret.academyIds = (ret.academyIds || []).map((id) => id.toString());
         ret.createdBy = ret.createdBy ? ret.createdBy.toString() : null;
         delete ret.__v;
         return ret;
@@ -89,6 +89,6 @@ const tournamentSchema = new mongoose.Schema(
   }
 );
 
-tournamentSchema.index({ academyId: 1, status: 1 });
+tournamentSchema.index({ academyIds: 1, status: 1 });
 
 module.exports = mongoose.model('Tournament', tournamentSchema);
