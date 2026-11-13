@@ -65,13 +65,8 @@ const parseSizes = (raw) => {
 const getKit = async (req, res, next) => {
   const academyId = resolveAcademyFilter(req);
   const kit = await TeamKit.findOne({ academyId });
-  // آخر حجز للاعب على هذا الطقم — لعرض حالته (قيد المراجعة/مؤكد/مرفوض).
-  const myBooking = kit
-    ? await KitBooking.findOne({ academyId, playerId: req.player._id, kitId: kit._id })
-      .sort({ created_at: -1 })
-    : null;
   return sendSuccess(res, {
-    data: kit ? { ...kit.toJSON(), myBooking: myBooking ? myBooking.toJSON() : null } : null,
+    data: kit ? kit.toJSON() : null,
     message: 'تم جلب طقم الفريق بنجاح',
   });
 };
@@ -342,8 +337,13 @@ const deleteBooking = async (req, res, next) => {
 const getPlayerKit = async (req, res, next) => {
   const academyId = req.player.academyId;
   const kit = await TeamKit.findOne({ academyId });
+  // آخر حجز للاعب على هذا الطقم — لعرض حالته (قيد المراجعة/مؤكد/مرفوض).
+  const myBooking = kit
+    ? await KitBooking.findOne({ academyId, playerId: req.player._id, kitId: kit._id })
+      .sort({ created_at: -1 })
+    : null;
   return sendSuccess(res, {
-    data: kit ? kit.toJSON() : null,
+    data: kit ? { ...kit.toJSON(), myBooking: myBooking ? myBooking.toJSON() : null } : null,
     message: 'تم جلب طقم الفريق بنجاح',
   });
 };

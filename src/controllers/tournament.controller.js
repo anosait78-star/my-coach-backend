@@ -278,8 +278,10 @@ const findParticipant = async (t, id) => {
 const updateParticipant = async (req, res) => {
   const t = await loadTournament(req, { manage: true });
   const p = await findParticipant(t, req.params.participantId);
-  // بعد بدء البطولة يُسمح فقط بتعديل اسم الفريق والكابتن، لا تغيير اللاعبين.
-  if (req.body.playerIds !== undefined) assertDraft(t);
+  // البطولات الجماعية: تشكيلة الفريق (إضافة/حذف/تبديل لاعبين) قابلة للتعديل في
+  // أي وقت — المباريات مرتبطة بالفريق لا باللاعبين. الفردية: اللاعب هو المشارك
+  // نفسه فلا يُغيَّر بعد توليد الجدول.
+  if (req.body.playerIds !== undefined && t.participantType !== 'team') assertDraft(t);
   p.set(await participantFields(t, req.body, p));
   await p.save();
   return sendSuccess(res, { data: p.toJSON(), message: 'تم تحديث المشارك بنجاح' });
