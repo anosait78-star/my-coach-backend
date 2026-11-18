@@ -41,6 +41,7 @@ const publicProfileRoutes = require('./routes/publicProfile.routes');
 const familyRoutes = require('./routes/family.routes');
 const offerRoutes = require('./routes/offer.routes');
 const tournamentRoutes = require('./routes/tournament.routes');
+const accountDeletionRoutes = require('./routes/accountDeletion.routes');
 
 const app = express();
 
@@ -155,6 +156,9 @@ app.use('/api/v1/public', publicProfileRoutes);
 app.use('/api/v1/families', familyRoutes);
 app.use('/api/v1/offers', offerRoutes);
 app.use('/api/v1/tournaments', tournamentRoutes);
+// عام (بلا protect) — صفحة طلب حذف الحساب المطلوبة من Google Play.
+app.use('/delete-account', accountDeletionRoutes.publicRouter);
+app.use('/api/v1/account-deletion-requests', accountDeletionRoutes.adminRouter);
 
 app.use(notFound);
 app.use(errorHandler);
