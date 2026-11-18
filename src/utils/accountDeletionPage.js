@@ -58,7 +58,8 @@ const STYLE = `
   textarea { min-height: 90px; resize: vertical; }
   button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:10px; background:var(--accent); color:#fff; font: inherit; font-weight:700; cursor:pointer; }
   a { color: var(--accent); }
-  .hp { position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+  /* مخفي بالقصّ لا بالإزاحة — الإزاحة لليسار في صفحة RTL تُنشئ تمريراً أفقياً */
+  .hp { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap; border:0; }
   .alert { border-radius:10px; padding:12px 14px; margin-bottom:12px; }
   .alert.err { border:1px solid var(--err); color:var(--err); }
   .alert.ok { border:1px solid var(--ok); color:var(--ok); }

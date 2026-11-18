@@ -52,6 +52,7 @@ test('page escapes user input and keeps required Play info', () => {
   assert.ok(html.includes('My Coach Academy'));
   assert.ok(html.includes('action="/delete-account"'));
   assert.ok(!/<script\b/i.test(html), 'page must not need inline scripts (helmet CSP)');
+  assert.ok(!/left:\s*-\d/.test(html), 'honeypot must not be pushed off-screen (RTL horizontal scroll)');
   assert.ok(renderDeletionSuccess().includes('تم استلام'));
 });
 
